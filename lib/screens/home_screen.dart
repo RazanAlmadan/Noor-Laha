@@ -1,8 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Used to set the status bar icon colors
 import '../core/app_colors.dart';
+import 'favorites_screen.dart';
+import '../core/dedications.dart';
+import 'dart:math'; // Needed for Random
 
-// Home screen of Noor Laha application
+// Hero image height, not counting the status bar. Increase it for a taller image.
+const double _heroBaseHeight = 270;
+
+// How far the cards overlap the bottom of the hero image.
+const double _heroOverlap = 36;
+
+// Home screen of the Noor Laha app.
 class HomeScreen extends StatelessWidget {
+  // Callback used to switch to a tab in the bottom bar (0 = home, 1 = Quran, ...).
   final ValueChanged<int> onOpenTab;
 
   const HomeScreen({
@@ -10,98 +21,132 @@ class HomeScreen extends StatelessWidget {
     required this.onOpenTab,
   });
 
+  // Opens the favorites screen on top of the current tab.
+  void _openFavorites(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const FavoritesScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      // Apply a soft purple background gradient
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.softLavender,
-            AppColors.background,
-            AppColors.cream,
-          ],
-        ),
+    // Height of the system status bar. The hero image extends behind it.
+    final double topInset = MediaQuery.paddingOf(context).top;
+    final double heroHeight = _heroBaseHeight + topInset;
+
+    // AnnotatedRegion keeps the status bar icons white over the purple image.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light, // Android
+        statusBarBrightness: Brightness.dark, // iOS
       ),
-      child: SafeArea(
-        bottom: false,
+      child: Container(
+        // Page background behind the content.
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColors.background,
+              AppColors.cream,
+            ],
+          ),
+        ),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          padding: EdgeInsets.zero,
           children: [
-            // Display the welcome message
-            const _HomeHeader(),
-
-            const SizedBox(height: 22),
-
-            // Display the main illustrated banner
-            const _IllustratedHero(),
-
-            const SizedBox(height: 28),
-
-            // Display the main section title
-            const Text(
-              'رحلتك مع القرآن الكريم',
-              style: TextStyle(
-                color: AppColors.deepPurple,
-                fontSize: 21,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 6),
-
-            const Text(
-              'اختر من أين تحب أن تبدأ اليوم',
-              style: TextStyle(
-                color: AppColors.mutedText,
-                fontSize: 13,
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            // Display the application features in a grid
-            GridView.count(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.05,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
+            // Stack layers its children: image, then hero texts, then cards.
+            Stack(
               children: [
-                _FeatureCard(
-                  title: 'المصحف',
-                  subtitle: 'قراءة القرآن الكريم',
-                  icon: Icons.menu_book_rounded,
-                  onTap: () => onOpenTab(1),
+                // 1) Hero image at the back.
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: heroHeight,
+                  child: const _HeroImage(),
                 ),
-                _FeatureCard(
-                  title: 'التلاوات',
-                  subtitle: 'استمع لتلاوات مختارة',
-                  icon: Icons.headphones_rounded,
-                  onTap: () => onOpenTab(2),
+
+                // 2) Hero text and icon buttons on top of the image.
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: _HeroContent(
+                    topInset: topInset,
+                    onBookmarkTap: () => _openFavorites(context),
+                    onSettingsTap: () => onOpenTab(4), // "More" tab (settings)
+                  ),
                 ),
-                _FeatureCard(
-                  title: 'الورد اليومي',
-                  subtitle: 'رحلتك اليومية مع القرآن',
-                  icon: Icons.calendar_month_rounded,
-                  onTap: () => onOpenTab(3),
-                ),
-                _FeatureCard(
-                  title: 'المفضلة',
-                  subtitle: 'آياتك المحفوظة',
-                  icon: Icons.favorite_border_rounded,
-                  onTap: () => onOpenTab(4),
+
+                // 3) Cards, pushed down by (hero height - overlap).
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    18,
+                    heroHeight - _heroOverlap,
+                    18,
+                    28,
+                  ),
+                  child: Column(
+                    // stretch makes every card take the full width.
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Continue reading card (static values for now,
+                      // we will connect it to the real reading position later).
+                      _ContinueReadingCard(
+                        surahName: 'سورة البقرة',
+                        ayahText: 'الآية 25',
+                        onTap: () => onOpenTab(1),
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      // Daily wird card with a progress bar.
+                      _DailyWirdCard(
+                        completedJuz: 5,
+                        totalJuz: 30,
+                        onTap: () => onOpenTab(3),
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      // Two small cards side by side.
+                      // IntrinsicHeight makes both cards the same height.
+                      IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: _SmallFeatureCard(
+                                title: 'التلاوات',
+                                subtitle: 'استمع لتلاوات مختارة',
+                                icon: Icons.headphones_rounded,
+                                onTap: () => onOpenTab(2),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _SmallFeatureCard(
+                                title: 'المفضلة',
+                                subtitle: 'آياتك وسورك المحفوظة',
+                                icon: Icons.favorite_border_rounded,
+                                onTap: () => _openFavorites(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 22),
+
+                      // Dedication card.
+                      const _DedicationCard(),
+                    ],
+                  ),
                 ),
               ],
             ),
-
-            const SizedBox(height: 24),
-
-            // Display the closing inspirational message
-            const _ClosingMessage(),
           ],
         ),
       ),
@@ -109,162 +154,365 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-// Display the welcome header
-class _HomeHeader extends StatelessWidget {
-  const _HomeHeader();
+// Hero image with rounded bottom corners.
+class _HeroImage extends StatelessWidget {
+  const _HeroImage();
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'السلام عليكم ♡',
-                style: TextStyle(
-                  color: AppColors.deepPurple,
-                  fontSize: 21,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              SizedBox(height: 5),
-              Text(
-                'مرحبًا بك في نور لها',
-                style: TextStyle(
-                  color: AppColors.mutedText,
-                  fontSize: 13,
-                ),
-              ),
-            ],
+    return ClipRRect(
+      // Round only the two bottom corners.
+      borderRadius: const BorderRadius.vertical(
+        bottom: Radius.circular(32),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Scale the image up 6% from the right edge. This crops the left edge
+          // and hides the light corners baked into the original image.
+          Transform.scale(
+            scale: 1.06,
+            alignment: Alignment.centerRight,
+            child: Image.asset(
+              // Same path that is registered in pubspec.yaml.
+              'assets/images/noor_laha_home_hero.png',
+              // cover fills the area without stretching the image.
+              fit: BoxFit.cover,
+              // Keep the illustration on the left, crop the empty right side.
+              alignment: Alignment.centerLeft,
+            ),
           ),
-        ),
 
-        // Display the decorative crescent icon
-        Container(
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            color: AppColors.cream,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withOpacity(0.08),
-                blurRadius: 12,
+          // Light dark gradient at the top so the status bar icons stay visible.
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.center,
+                colors: [
+                  AppColors.deepPurple.withValues(alpha: 0.45),
+                  Colors.transparent,
+                ],
               ),
-            ],
+            ),
           ),
-          child: const Icon(
-            Icons.nightlight_round,
-            color: AppColors.primary,
-            size: 25,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
+// Texts and icon buttons displayed over the hero image.
+class _HeroContent extends StatelessWidget {
+  final double topInset;
+  final VoidCallback onBookmarkTap;
+  final VoidCallback onSettingsTap;
 
-// Display the illustrated home banner
-class _IllustratedHero extends StatelessWidget {
-  const _IllustratedHero();
+  const _HeroContent({
+    required this.topInset,
+    required this.onBookmarkTap,
+    required this.onSettingsTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 220,
+    return Padding(
+      // topInset moves everything below the status bar.
+      padding: EdgeInsets.fromLTRB(20, topInset + 12, 20, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Hero text on the right (42% of the width so it stays off the artwork).
+          Expanded(
+            flex: 42,
+            child: const Padding(
+              // Pushes the text down to the middle of the image. Tune the 40.
+              padding: EdgeInsets.only(top: 40),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'نورٌ لها\nوأثرٌ يبقى',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      height: 1.4,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'مع كل آية تُقرأ\nتشرق سكينة جديدة',
+                    style: TextStyle(
+                      color: Color(0xFFF1E4F5),
+                      fontSize: 14,
+                      height: 1.7,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
-      // Apply rounded corners and a soft shadow
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.deepPurple.withValues(alpha: 0.20),
-            blurRadius: 22,
-            offset: const Offset(0, 9),
+          // Icon buttons on the left.
+          Expanded(
+            flex: 58,
+            child: Row(
+              // In RTL, "end" means the left side.
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                _GlassIconButton(
+                  icon: Icons.settings_outlined,
+                  onTap: onSettingsTap,
+                ),
+                const SizedBox(width: 10),
+                _GlassIconButton(
+                  icon: Icons.bookmark_border_rounded,
+                  onTap: onBookmarkTap,
+                ),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+}
 
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
+// Icon button with a semi-transparent background.
+class _GlassIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
 
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Display the illustrated background
-            Image.asset(
-              'assets/images/noor_laha_home_hero.png',
-              fit: BoxFit.fill,
-            ),
+  const _GlassIconButton({
+    required this.icon,
+    required this.onTap,
+  });
 
-            // Display the banner text on the right
-            Row(
-              children: [
-                Expanded(
-                  flex: 43,
-                  child: Padding(
-                    padding: const EdgeInsetsDirectional.only(
-                      start: 10,
-                      end: 8,
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.18),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: Icon(icon, color: Colors.white, size: 22),
+        ),
+      ),
+    );
+  }
+}
+
+// Wide "continue reading" card.
+class _ContinueReadingCard extends StatelessWidget {
+  final String surahName;
+  final String ayahText;
+  final VoidCallback onTap;
+
+  const _ContinueReadingCard({
+    required this.surahName,
+    required this.ayahText,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.cream,
+      borderRadius: BorderRadius.circular(26),
+      elevation: 4,
+      shadowColor: AppColors.deepPurple.withValues(alpha: 0.25),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(26),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Icon box with a purple gradient.
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                    colors: [AppColors.primary, AppColors.deepPurple],
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.menu_book_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              // Texts.
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'أكمل القراءة',
+                      style: TextStyle(
+                        color: AppColors.mutedText,
+                        fontSize: 14,
+                      ),
                     ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 4),
+                    Text(
+                      surahName,
+                      style: const TextStyle(
+                        color: AppColors.deepPurple,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      ayahText,
+                      style: const TextStyle(
+                        color: AppColors.mutedText,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Arrow circle.
+              Container(
+                width: 40,
+                height: 40,
+                decoration: const BoxDecoration(
+                  color: AppColors.softLavender,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: AppColors.primary,
+                  size: 16,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Daily wird card with a progress bar.
+class _DailyWirdCard extends StatelessWidget {
+  final int completedJuz;
+  final int totalJuz;
+  final VoidCallback onTap;
+
+  const _DailyWirdCard({
+    required this.completedJuz,
+    required this.totalJuz,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Progress ratio between 0 and 1.
+    final double progress = completedJuz / totalJuz;
+
+    return Material(
+      color: AppColors.cream,
+      borderRadius: BorderRadius.circular(26),
+      elevation: 2,
+      shadowColor: AppColors.primary.withValues(alpha: 0.12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(26),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: AppColors.softLavender,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.calendar_month_rounded,
+                  color: AppColors.primary,
+                  size: 26,
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              Expanded(
+                child: Column(
+                  children: [
+                    // Title on the right, count on the left.
+                    Row(
                       children: [
-                        // Display the main title
-                        const Text(
-                          'نورٌ لها\nوأثرٌ يبقى',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 21,
-                            fontWeight: FontWeight.bold,
-                            height: 1.4,
+                        const Expanded(
+                          child: Text(
+                            'الورد اليومي',
+                            style: TextStyle(
+                              color: AppColors.deepPurple,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
-
-                        const SizedBox(height: 12),
-
-                        // Display the supporting message
-                        const Text(
-                          'مع كل آية تُقرأ\nتشرق سكينة جديدة',
-                          style: TextStyle(
-                            color: Color(0xFFF8EAF5),
-                            fontSize: 11,
-                            height: 1.7,
+                        Text(
+                          '$completedJuz من $totalJuz جزء',
+                          style: const TextStyle(
+                            color: AppColors.mutedText,
+                            fontSize: 14,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
 
-                // Keep the left side clear for the illustration
-                const Expanded(
-                  flex: 57,
-                  child: SizedBox(),
+                    const SizedBox(height: 10),
+
+                    // Progress bar with rounded ends.
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 8,
+                        backgroundColor: AppColors.softLavender,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-
-
-// Reusable card for application features
-class _FeatureCard extends StatelessWidget {
+// Small card (used for recitations and favorites).
+class _SmallFeatureCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
   final VoidCallback onTap;
 
-  const _FeatureCard({
+  const _SmallFeatureCard({
     required this.title,
     required this.subtitle,
     required this.icon,
@@ -275,62 +523,43 @@ class _FeatureCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.cream,
-      borderRadius: BorderRadius.circular(25),
+      borderRadius: BorderRadius.circular(24),
       elevation: 2,
-      shadowColor: AppColors.primary.withOpacity(0.12),
+      shadowColor: AppColors.primary.withValues(alpha: 0.12),
       child: InkWell(
-        // Handle navigation when the user taps the card
         onTap: onTap,
-        borderRadius: BorderRadius.circular(25),
+        borderRadius: BorderRadius.circular(24),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Display the feature icon
               Container(
-                width: 54,
-                height: 54,
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFFF0E4F3),
-                      Color(0xFFE6D5ED),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(19),
+                  color: AppColors.softLavender,
+                  borderRadius: BorderRadius.circular(15),
                 ),
-                child: Icon(
-                  icon,
-                  size: 29,
-                  color: AppColors.primary,
-                ),
+                child: Icon(icon, color: AppColors.primary, size: 25),
               ),
-
               const SizedBox(height: 12),
-
-              // Display the feature title
               Text(
                 title,
-                textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: AppColors.deepPurple,
-                  fontSize: 16,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
-              const SizedBox(height: 5),
-
-              // Display the feature description
+              const SizedBox(height: 4),
               Text(
                 subtitle,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: AppColors.mutedText,
-                  fontSize: 11,
+                  fontSize: 13,
                   height: 1.4,
                 ),
               ),
@@ -342,46 +571,93 @@ class _FeatureCard extends StatelessWidget {
   }
 }
 
-// Display a gentle message at the bottom of the page
-class _ClosingMessage extends StatelessWidget {
-  const _ClosingMessage();
+// Dedication card. It shows a different dua every time the app opens,
+// and the button lets the user switch to the next one.
+class _DedicationCard extends StatefulWidget {
+  const _DedicationCard();
+
+  @override
+  State<_DedicationCard> createState() => _DedicationCardState();
+}
+
+class _DedicationCardState extends State<_DedicationCard> {
+  // Picked once when the card is created. It stays the same while the app
+  // is open, until the user taps the button.
+  late int _index = Random().nextInt(kDedications.length);
+
+  // Move to the next dua (and go back to the first one after the last).
+  void _next() {
+    setState(() {
+      _index = (_index + 1) % kDedications.length;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 20,
-        vertical: 24,
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
       decoration: BoxDecoration(
-        color: AppColors.softLavender,
-        borderRadius: BorderRadius.circular(25),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppColors.softLavender, Color(0xFFF3E9F6)],
+        ),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(
+          color: AppColors.lavender.withValues(alpha: 0.5),
+        ),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(
-            Icons.auto_awesome_rounded,
+          const Icon(
+            Icons.favorite_rounded,
             color: AppColors.primary,
-            size: 27,
+            size: 22,
           ),
-          SizedBox(height: 12),
-          Text(
-            'نورٌ يُتلى، وأثرٌ يبقى',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
-              color: AppColors.deepPurple,
-            ),
-          ),
-          SizedBox(height: 10),
-          Text(
-            'رحلة هادئة مع القرآن الكريم، تبدأ بآية وتستمر بأثر جميل.',
-            textAlign: TextAlign.center,
+          const SizedBox(height: 10),
+          const Text(
+            'صدقة جارية',
             style: TextStyle(
               color: AppColors.mutedText,
-              height: 1.8,
-              fontSize: 13,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // minHeight keeps the card from jumping when the dua length changes.
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 110),
+            child: Center(
+              // AnimatedSwitcher fades from the old dua to the new one.
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: Text(
+                  kDedications[_index],
+                  // A different key tells Flutter this is a new widget,
+                  // which is what triggers the fade animation.
+                  key: ValueKey<int>(_index),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppColors.deepPurple,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    height: 1.8,
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Button to show the next dua (bottom-left in RTL).
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: IconButton(
+              onPressed: _next,
+              tooltip: 'دعاء آخر',
+              icon: const Icon(
+                Icons.autorenew_rounded,
+                color: AppColors.primary,
+              ),
             ),
           ),
         ],

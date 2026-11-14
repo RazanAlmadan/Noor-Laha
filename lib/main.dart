@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 
 import 'core/app_colors.dart';
 import 'screens/home_screen.dart';
+import 'screens/more_screen.dart';
 import 'screens/quran_screen.dart';
+import 'screens/upcoming_screen.dart';
 
 void main() {
   runApp(const NoorLahaApp());
 }
 
-// Main application widget
+// Root widget of the application.
 class NoorLahaApp extends StatelessWidget {
   const NoorLahaApp({super.key});
 
@@ -18,16 +20,19 @@ class NoorLahaApp extends StatelessWidget {
       title: 'نور لها',
       debugShowCheckedModeBanner: false,
 
-      // Apply the application theme
       theme: ThemeData(
         useMaterial3: true,
+
+        // Default font for the whole app (declared in pubspec.yaml).
+        fontFamily: 'Tajawal',
+
         colorScheme: ColorScheme.fromSeed(
           seedColor: AppColors.primary,
         ),
         scaffoldBackgroundColor: AppColors.background,
       ),
 
-      // Force right-to-left layout for Arabic content
+      // Force right-to-left layout for the whole app (Arabic).
       builder: (context, child) {
         return Directionality(
           textDirection: TextDirection.rtl,
@@ -40,7 +45,7 @@ class NoorLahaApp extends StatelessWidget {
   }
 }
 
-// Root widget that manages bottom navigation
+// Root widget that holds the bottom navigation bar and the tab screens.
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -51,7 +56,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int selectedIndex = 0;
 
-  // Navigate to the selected tab
+  // Switch to the tab with the given index.
   void openTab(int index) {
     setState(() {
       selectedIndex = index;
@@ -61,32 +66,44 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // IndexedStack keeps all tabs alive and shows only the selected one.
+      // The order here must match the order of the destinations below.
       body: IndexedStack(
         index: selectedIndex,
         children: [
-          HomeScreen(onOpenTab: openTab),
-          const QuranScreen(),
+          HomeScreen(onOpenTab: openTab), // 0: Home
+          const QuranScreen(), // 1: Quran
           const UpcomingScreen(
             title: 'التلاوات',
             icon: Icons.headphones_rounded,
-          ),
+          ), // 2: Recitations
           const UpcomingScreen(
             title: 'الورد اليومي',
             icon: Icons.calendar_month_rounded,
-          ),
-          const UpcomingScreen(
-            title: 'المفضلة',
-            icon: Icons.favorite_rounded,
-          ),
+          ), // 3: Daily wird
+          const MoreScreen(), // 4: More
         ],
       ),
 
-      // Display the bottom navigation bar
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
-          labelTextStyle: WidgetStateProperty.all(
-            const TextStyle(fontSize: 10),
-          ),
+          // Label style depends on whether the tab is selected.
+          labelTextStyle: WidgetStateProperty.resolveWith((states) {
+            final bool selected = states.contains(WidgetState.selected);
+            return TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+              color: selected ? AppColors.deepPurple : AppColors.mutedText,
+            );
+          }),
+          // Icon color also depends on the selected state.
+          iconTheme: WidgetStateProperty.resolveWith((states) {
+            final bool selected = states.contains(WidgetState.selected);
+            return IconThemeData(
+              size: 26,
+              color: selected ? AppColors.deepPurple : AppColors.mutedText,
+            );
+          }),
         ),
         child: NavigationBar(
           height: 72,
@@ -116,70 +133,11 @@ class _AppShellState extends State<AppShell> {
               label: 'الورد',
             ),
             NavigationDestination(
-              icon: Icon(Icons.favorite_border_rounded),
-              selectedIcon: Icon(Icons.favorite_rounded),
-              label: 'المفضلة',
+              icon: Icon(Icons.more_horiz_rounded),
+              selectedIcon: Icon(Icons.more_horiz_rounded),
+              label: 'المزيد',
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// Temporary screen for sections we will build later
-class UpcomingScreen extends StatelessWidget {
-  final String title;
-  final IconData icon;
-
-  const UpcomingScreen({
-    super.key,
-    required this.title,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.softLavender,
-            AppColors.background,
-          ],
-        ),
-      ),
-      child: SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                size: 64,
-                color: AppColors.primary,
-              ),
-              const SizedBox(height: 20),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.deepPurple,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'سنجهز هذه الصفحة قريبًا بإذن الله',
-                style: TextStyle(
-                  color: AppColors.mutedText,
-                  fontSize: 15,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
