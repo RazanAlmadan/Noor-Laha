@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../core/app_colors.dart';
+import '../core/theme_controller.dart';
 import 'about_screen.dart';
 import 'favorites_screen.dart';
 
-// "More" tab: favorites, settings and about.
+// "More" tab: favorites, theme, settings and about.
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
 
@@ -17,28 +18,51 @@ class MoreScreen extends StatelessWidget {
     );
   }
 
+  // Cycle the theme: system -> light -> dark -> system.
+  void _cycleTheme() {
+    themeModeNotifier.value = switch (themeModeNotifier.value) {
+      ThemeMode.system => ThemeMode.light,
+      ThemeMode.light => ThemeMode.dark,
+      ThemeMode.dark => ThemeMode.system,
+    };
+  }
+
+  String _themeLabel(ThemeMode mode) {
+    return switch (mode) {
+      ThemeMode.system => 'تلقائي (حسب الجهاز)',
+      ThemeMode.light => 'فاتح',
+      ThemeMode.dark => 'داكن',
+    };
+  }
+
+  IconData _themeIcon(ThemeMode mode) {
+    return switch (mode) {
+      ThemeMode.system => Icons.brightness_auto_rounded,
+      ThemeMode.light => Icons.light_mode_rounded,
+      ThemeMode.dark => Icons.dark_mode_rounded,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            AppColors.softLavender,
-            AppColors.background,
-            AppColors.cream,
-          ],
+          colors: [colors.backgroundTop, colors.background],
         ),
       ),
       child: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
           children: [
-            const Text(
+            Text(
               'المزيد',
               style: TextStyle(
-                color: AppColors.deepPurple,
+                color: colors.title,
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
               ),
@@ -63,10 +87,25 @@ class MoreScreen extends StatelessWidget {
 
             const SizedBox(height: 12),
 
+            // ValueListenableBuilder rebuilds only this tile when the mode changes.
+            ValueListenableBuilder<ThemeMode>(
+              valueListenable: themeModeNotifier,
+              builder: (context, mode, _) {
+                return _MoreTile(
+                  icon: _themeIcon(mode),
+                  title: 'المظهر',
+                  subtitle: _themeLabel(mode),
+                  onTap: _cycleTheme,
+                );
+              },
+            ),
+
+            const SizedBox(height: 12),
+
             _MoreTile(
               icon: Icons.settings_outlined,
               title: 'الإعدادات',
-              subtitle: 'المظهر وحجم الخط',
+              subtitle: 'حجم الخط وغيرها',
               onTap: () => _showSoon(context),
             ),
 
@@ -107,11 +146,13 @@ class _MoreTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Material(
-      color: AppColors.cream,
+      color: colors.card,
       borderRadius: BorderRadius.circular(22),
       elevation: 1.5,
-      shadowColor: AppColors.primary.withValues(alpha: 0.10),
+      shadowColor: colors.shadow,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(22),
@@ -123,10 +164,10 @@ class _MoreTile extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: AppColors.softLavender,
+                  color: colors.softSurface,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(icon, color: AppColors.primary, size: 26),
+                child: Icon(icon, color: colors.accent, size: 26),
               ),
 
               const SizedBox(width: 14),
@@ -137,8 +178,8 @@ class _MoreTile extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: AppColors.deepPurple,
+                      style: TextStyle(
+                        color: colors.title,
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
@@ -146,8 +187,8 @@ class _MoreTile extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        color: AppColors.mutedText,
+                      style: TextStyle(
+                        color: colors.mutedText,
                         fontSize: 13,
                       ),
                     ),
@@ -155,9 +196,9 @@ class _MoreTile extends StatelessWidget {
                 ),
               ),
 
-              const Icon(
+              Icon(
                 Icons.arrow_forward_ios_rounded,
-                color: AppColors.primary,
+                color: colors.accent,
                 size: 16,
               ),
             ],

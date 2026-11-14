@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'core/app_colors.dart';
+import 'core/app_theme.dart';
+import 'core/theme_controller.dart';
 import 'screens/home_screen.dart';
 import 'screens/more_screen.dart';
 import 'screens/quran_screen.dart';
@@ -16,31 +19,43 @@ class NoorLahaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'نور لها',
-      debugShowCheckedModeBanner: false,
+    // Rebuild the app whenever the theme mode changes.
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeModeNotifier,
+      builder: (context, mode, _) {
+        return MaterialApp(
+          title: 'نور لها',
+          debugShowCheckedModeBanner: false,
 
-      theme: ThemeData(
-        useMaterial3: true,
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
+          themeMode: mode,
 
-        // Default font for the whole app (declared in pubspec.yaml).
-        fontFamily: 'Tajawal',
+          builder: (context, child) {
+            final bool isDark =
+                Theme.of(context).brightness == Brightness.dark;
 
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.primary,
-        ),
-        scaffoldBackgroundColor: AppColors.background,
-      ),
+            // Status bar icons: light icons on dark theme, dark icons on light.
+            // The home screen overrides this with its own style.
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness:
+                isDark ? Brightness.light : Brightness.dark, // Android
+                statusBarBrightness:
+                isDark ? Brightness.dark : Brightness.light, // iOS
+              ),
+              // Force right-to-left layout for the whole app (Arabic).
+              child: Directionality(
+                textDirection: TextDirection.rtl,
+                child: child ?? const SizedBox.shrink(),
+              ),
+            );
+          },
 
-      // Force right-to-left layout for the whole app (Arabic).
-      builder: (context, child) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: child ?? const SizedBox.shrink(),
+          home: const AppShell(),
         );
       },
-
-      home: const AppShell(),
     );
   }
 }
@@ -65,6 +80,8 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Scaffold(
       // IndexedStack keeps all tabs alive and shows only the selected one.
       // The order here must match the order of the destinations below.
@@ -93,7 +110,7 @@ class _AppShellState extends State<AppShell> {
             return TextStyle(
               fontSize: 12,
               fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-              color: selected ? AppColors.deepPurple : AppColors.mutedText,
+              color: selected ? colors.title : colors.mutedText,
             );
           }),
           // Icon color also depends on the selected state.
@@ -101,7 +118,7 @@ class _AppShellState extends State<AppShell> {
             final bool selected = states.contains(WidgetState.selected);
             return IconThemeData(
               size: 26,
-              color: selected ? AppColors.deepPurple : AppColors.mutedText,
+              color: selected ? colors.title : colors.mutedText,
             );
           }),
         ),
@@ -109,8 +126,8 @@ class _AppShellState extends State<AppShell> {
           height: 72,
           selectedIndex: selectedIndex,
           onDestinationSelected: openTab,
-          backgroundColor: AppColors.cream,
-          indicatorColor: AppColors.softLavender,
+          backgroundColor: colors.card,
+          indicatorColor: colors.softSurface,
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.home_outlined),

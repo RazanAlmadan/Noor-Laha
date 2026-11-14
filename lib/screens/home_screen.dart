@@ -1,9 +1,9 @@
+import 'dart:math'; // Random
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Used to set the status bar icon colors
 import '../core/app_colors.dart';
-import 'favorites_screen.dart';
 import '../core/dedications.dart';
-import 'dart:math'; // Needed for Random
+import 'favorites_screen.dart';
 
 // Hero image height, not counting the status bar. Increase it for a taller image.
 const double _heroBaseHeight = 270;
@@ -30,11 +30,13 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     // Height of the system status bar. The hero image extends behind it.
     final double topInset = MediaQuery.paddingOf(context).top;
     final double heroHeight = _heroBaseHeight + topInset;
 
-    // AnnotatedRegion keeps the status bar icons white over the purple image.
+    // The hero is dark in both themes, so the status bar icons stay white here.
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -43,14 +45,11 @@ class HomeScreen extends StatelessWidget {
       ),
       child: Container(
         // Page background behind the content.
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              AppColors.background,
-              AppColors.cream,
-            ],
+            colors: [colors.backgroundTop, colors.background],
           ),
         ),
         child: ListView(
@@ -160,6 +159,8 @@ class _HeroImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return ClipRRect(
       // Round only the two bottom corners.
       borderRadius: const BorderRadius.vertical(
@@ -174,7 +175,6 @@ class _HeroImage extends StatelessWidget {
             scale: 1.06,
             alignment: Alignment.centerRight,
             child: Image.asset(
-              // Same path that is registered in pubspec.yaml.
               'assets/images/noor_laha_home_hero.png',
               // cover fills the area without stretching the image.
               fit: BoxFit.cover,
@@ -183,16 +183,16 @@ class _HeroImage extends StatelessWidget {
             ),
           ),
 
+          // Extra tint over the image (transparent in light mode, dark in dark mode).
+          ColoredBox(color: colors.heroTint),
+
           // Light dark gradient at the top so the status bar icons stay visible.
-          DecoratedBox(
+          const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.center,
-                colors: [
-                  AppColors.deepPurple.withValues(alpha: 0.45),
-                  Colors.transparent,
-                ],
+                colors: [Color(0x803A2352), Colors.transparent],
               ),
             ),
           ),
@@ -321,11 +321,13 @@ class _ContinueReadingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Material(
-      color: AppColors.cream,
+      color: colors.card,
       borderRadius: BorderRadius.circular(26),
       elevation: 4,
-      shadowColor: AppColors.deepPurple.withValues(alpha: 0.25),
+      shadowColor: colors.shadow,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(26),
@@ -338,10 +340,10 @@ class _ContinueReadingCard extends StatelessWidget {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     begin: Alignment.topRight,
                     end: Alignment.bottomLeft,
-                    colors: [AppColors.primary, AppColors.deepPurple],
+                    colors: [colors.accentStrongStart, colors.accentStrongEnd],
                   ),
                   borderRadius: BorderRadius.circular(18),
                 ),
@@ -359,18 +361,18 @@ class _ContinueReadingCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'أكمل القراءة',
                       style: TextStyle(
-                        color: AppColors.mutedText,
+                        color: colors.mutedText,
                         fontSize: 14,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       surahName,
-                      style: const TextStyle(
-                        color: AppColors.deepPurple,
+                      style: TextStyle(
+                        color: colors.title,
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
@@ -378,8 +380,8 @@ class _ContinueReadingCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       ayahText,
-                      style: const TextStyle(
-                        color: AppColors.mutedText,
+                      style: TextStyle(
+                        color: colors.mutedText,
                         fontSize: 15,
                       ),
                     ),
@@ -391,13 +393,13 @@ class _ContinueReadingCard extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                decoration: const BoxDecoration(
-                  color: AppColors.softLavender,
+                decoration: BoxDecoration(
+                  color: colors.softSurface,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.arrow_forward_ios_rounded,
-                  color: AppColors.primary,
+                  color: colors.accent,
                   size: 16,
                 ),
               ),
@@ -423,14 +425,16 @@ class _DailyWirdCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     // Progress ratio between 0 and 1.
     final double progress = completedJuz / totalJuz;
 
     return Material(
-      color: AppColors.cream,
+      color: colors.card,
       borderRadius: BorderRadius.circular(26),
       elevation: 2,
-      shadowColor: AppColors.primary.withValues(alpha: 0.12),
+      shadowColor: colors.shadow,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(26),
@@ -442,12 +446,12 @@ class _DailyWirdCard extends StatelessWidget {
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  color: AppColors.softLavender,
+                  color: colors.softSurface,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.calendar_month_rounded,
-                  color: AppColors.primary,
+                  color: colors.accent,
                   size: 26,
                 ),
               ),
@@ -460,11 +464,11 @@ class _DailyWirdCard extends StatelessWidget {
                     // Title on the right, count on the left.
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'الورد اليومي',
                             style: TextStyle(
-                              color: AppColors.deepPurple,
+                              color: colors.title,
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
@@ -472,8 +476,8 @@ class _DailyWirdCard extends StatelessWidget {
                         ),
                         Text(
                           '$completedJuz من $totalJuz جزء',
-                          style: const TextStyle(
-                            color: AppColors.mutedText,
+                          style: TextStyle(
+                            color: colors.mutedText,
                             fontSize: 14,
                           ),
                         ),
@@ -488,9 +492,9 @@ class _DailyWirdCard extends StatelessWidget {
                       child: LinearProgressIndicator(
                         value: progress,
                         minHeight: 8,
-                        backgroundColor: AppColors.softLavender,
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          AppColors.primary,
+                        backgroundColor: colors.softSurface,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          colors.accent,
                         ),
                       ),
                     ),
@@ -521,11 +525,13 @@ class _SmallFeatureCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Material(
-      color: AppColors.cream,
+      color: colors.card,
       borderRadius: BorderRadius.circular(24),
       elevation: 2,
-      shadowColor: AppColors.primary.withValues(alpha: 0.12),
+      shadowColor: colors.shadow,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(24),
@@ -538,16 +544,16 @@ class _SmallFeatureCard extends StatelessWidget {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: AppColors.softLavender,
+                  color: colors.softSurface,
                   borderRadius: BorderRadius.circular(15),
                 ),
-                child: Icon(icon, color: AppColors.primary, size: 25),
+                child: Icon(icon, color: colors.accent, size: 25),
               ),
               const SizedBox(height: 12),
               Text(
                 title,
-                style: const TextStyle(
-                  color: AppColors.deepPurple,
+                style: TextStyle(
+                  color: colors.title,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
@@ -557,8 +563,8 @@ class _SmallFeatureCard extends StatelessWidget {
                 subtitle,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.mutedText,
+                style: TextStyle(
+                  color: colors.mutedText,
                   fontSize: 13,
                   height: 1.4,
                 ),
@@ -571,8 +577,9 @@ class _SmallFeatureCard extends StatelessWidget {
   }
 }
 
-// Dedication card. It shows a different dua every time the app opens,
-// and the button lets the user switch to the next one.
+
+// Dedication card. The user swipes between the duas, and a random one is
+// shown first every time the app opens.
 class _DedicationCard extends StatefulWidget {
   const _DedicationCard();
 
@@ -581,87 +588,315 @@ class _DedicationCard extends StatefulWidget {
 }
 
 class _DedicationCardState extends State<_DedicationCard> {
-  // Picked once when the card is created. It stays the same while the app
-  // is open, until the user taps the button.
+  // Start from a random dua each time the app opens.
   late int _index = Random().nextInt(kDedications.length);
 
-  // Move to the next dua (and go back to the first one after the last).
+  // Controls the swipeable pages. It starts at the random dua above.
+  late final PageController _controller = PageController(initialPage: _index);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  // Go to the next dua, and back to the first one after the last.
   void _next() {
-    setState(() {
-      _index = (_index + 1) % kDedications.length;
-    });
+    final int target = (_index + 1) % kDedications.length;
+    _controller.animateToPage(
+      target,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOut,
+    );
+  }
+
+  // Copy the current dua to the clipboard.
+  Future<void> _copy() async {
+    // Capture the messenger before the await so we do not use context after it.
+    final messenger = ScaffoldMessenger.of(context);
+    await Clipboard.setData(ClipboardData(text: kDedications[_index]));
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('تم نسخ الدعاء'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppColors.softLavender, Color(0xFFF3E9F6)],
+        borderRadius: BorderRadius.circular(28),
+        gradient: LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [colors.card, colors.softSurface.withValues(alpha: 0.6)],
         ),
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(
-          color: AppColors.lavender.withValues(alpha: 0.5),
-        ),
-      ),
-      child: Column(
-        children: [
-          const Icon(
-            Icons.favorite_rounded,
-            color: AppColors.primary,
-            size: 22,
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'صدقة جارية',
-            style: TextStyle(
-              color: AppColors.mutedText,
-              fontSize: 15,
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // minHeight keeps the card from jumping when the dua length changes.
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 110),
-            child: Center(
-              // AnimatedSwitcher fades from the old dua to the new one.
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                child: Text(
-                  kDedications[_index],
-                  // A different key tells Flutter this is a new widget,
-                  // which is what triggers the fade animation.
-                  key: ValueKey<int>(_index),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: AppColors.deepPurple,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    height: 1.8,
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // Button to show the next dua (bottom-left in RTL).
-          Align(
-            alignment: AlignmentDirectional.centerEnd,
-            child: IconButton(
-              onPressed: _next,
-              tooltip: 'دعاء آخر',
-              icon: const Icon(
-                Icons.autorenew_rounded,
-                color: AppColors.primary,
-              ),
-            ),
+        border: Border.all(color: colors.border.withValues(alpha: 0.8)),
+        boxShadow: [
+          BoxShadow(
+            color: colors.shadow,
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
+      // ClipRRect cuts the watermark to the rounded corners of the card.
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(27),
+        child: Stack(
+          children: [
+            // Faint plant branch watermark in the bottom-left corner.
+            // It is bigger than before and sits higher, so the buttons
+            // do not cover it. A negative `end` lets it peek out of the edge.
+            PositionedDirectional(
+              end: -6,
+              bottom: 36,
+              child: CustomPaint(
+                size: const Size(130, 190),
+                painter: _BranchPainter(color: colors.accent),
+              ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+              child: Column(
+                children: [
+                  const _QuoteDivider(isOpening: true),
+
+                  // Fixed height for the swipeable duas.
+                  // Increase it if you add a long dua that needs 4 lines.
+                  SizedBox(
+                    height: 124,
+                    child: PageView.builder(
+                      controller: _controller,
+                      itemCount: kDedications.length,
+                      onPageChanged: (i) => setState(() => _index = i),
+                      itemBuilder: (context, i) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            child: Text(
+                              kDedications[i],
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: colors.title,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                height: 1.9,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+
+                  const _QuoteDivider(isOpening: false),
+
+                  const SizedBox(height: 10),
+
+                  // Copy button (right), page dots (center), next button (left).
+                  Row(
+                    children: [
+                      _SoftIconButton(
+                        icon: Icons.copy_rounded,
+                        tooltip: 'نسخ الدعاء',
+                        onTap: _copy,
+                      ),
+                      const Spacer(),
+                      _PageDots(count: kDedications.length, index: _index),
+                      const Spacer(),
+                      _SoftIconButton(
+                        icon: Icons.autorenew_rounded,
+                        tooltip: 'دعاء آخر',
+                        onTap: _next,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
+}
+
+// Thin line with a quote mark in the middle (opening or closing).
+class _QuoteDivider extends StatelessWidget {
+  final bool isOpening;
+
+  const _QuoteDivider({required this.isOpening});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return Row(
+      children: [
+        Expanded(child: Container(height: 1, color: colors.border)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Transform.rotate(
+            // The closing mark is the opening mark turned upside down.
+            angle: isOpening ? 0 : pi,
+            child: Icon(
+              Icons.format_quote_rounded,
+              color: colors.accent,
+              size: 26,
+            ),
+          ),
+        ),
+        Expanded(child: Container(height: 1, color: colors.border)),
+      ],
+    );
+  }
+}
+
+// Small rounded icon button used inside the dedication card.
+class _SoftIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _SoftIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: colors.softSurface,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Icon(icon, color: colors.accent, size: 20),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Row of dots that shows which dua is selected.
+class _PageDots extends StatelessWidget {
+  final int count;
+  final int index;
+
+  const _PageDots({required this.count, required this.index});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(count, (i) {
+        final bool active = i == index;
+        // AnimatedContainer smoothly grows the active dot.
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          width: active ? 20 : 7,
+          height: 7,
+          decoration: BoxDecoration(
+            color: active ? colors.accent : colors.border,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+// Draws a soft plant branch: a curved stem with leaves on both sides.
+// It is drawn with code, so it follows the theme color (light and dark).
+class _BranchPainter extends CustomPainter {
+  final Color color;
+
+  const _BranchPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Stem is a quadratic curve from the bottom up to the top.
+    final Offset start = Offset(size.width * 0.45, size.height);
+    final Offset control = Offset(size.width * 0.1, size.height * 0.5);
+    final Offset end = Offset(size.width * 0.7, size.height * 0.04);
+
+    final Paint stemPaint = Paint()
+      ..color = color.withValues(alpha: 0.25)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+
+    final Path stem = Path()
+      ..moveTo(start.dx, start.dy)
+      ..quadraticBezierTo(control.dx, control.dy, end.dx, end.dy);
+    canvas.drawPath(stem, stemPaint);
+
+    final Paint leafPaint = Paint()
+      ..color = color.withValues(alpha: 0.22)
+      ..style = PaintingStyle.fill;
+
+    // Point on the curve at t (0 = bottom, 1 = top).
+    Offset pointAt(double t) {
+      final double u = 1 - t;
+      return Offset(
+        u * u * start.dx + 2 * u * t * control.dx + t * t * end.dx,
+        u * u * start.dy + 2 * u * t * control.dy + t * t * end.dy,
+      );
+    }
+
+    // Direction of the stem at t, used to tilt each leaf along it.
+    double angleAt(double t) {
+      final double u = 1 - t;
+      final double dx = 2 * u * (control.dx - start.dx) + 2 * t * (end.dx - control.dx);
+      final double dy = 2 * u * (control.dy - start.dy) + 2 * t * (end.dy - control.dy);
+      return atan2(dy, dx);
+    }
+
+    // Draw one leaf at t. side = 1 or -1 picks the left or right of the stem.
+    void drawLeaf(double t, double side, double length) {
+      final Offset p = pointAt(t);
+      canvas.save();
+      canvas.translate(p.dx, p.dy);
+      canvas.rotate(angleAt(t) + side * 0.85);
+      final double w = length * 0.32;
+      final Path leaf = Path()
+        ..moveTo(0, 0)
+        ..quadraticBezierTo(length * 0.5, -w, length, 0)
+        ..quadraticBezierTo(length * 0.5, w, 0, 0);
+      canvas.drawPath(leaf, leafPaint);
+      canvas.restore();
+    }
+
+    // Leaves alternate sides and get smaller toward the top.
+    drawLeaf(0.28, 1, 44);
+    drawLeaf(0.40, -1, 44);
+    drawLeaf(0.55, 1, 38);
+    drawLeaf(0.68, -1, 34);
+    drawLeaf(0.82, 1, 29);
+    drawLeaf(0.92, -1, 26);
+    // Top leaf continues straight along the stem.
+    drawLeaf(1.0, 0, 32);
+  }
+
+  @override
+  bool shouldRepaint(_BranchPainter oldDelegate) => oldDelegate.color != color;
 }

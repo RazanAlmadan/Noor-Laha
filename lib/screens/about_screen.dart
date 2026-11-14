@@ -9,6 +9,8 @@ class AboutScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -16,21 +18,17 @@ class AboutScreen extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
-        backgroundColor: AppColors.softLavender,
-        foregroundColor: AppColors.deepPurple,
+        backgroundColor: colors.backgroundTop,
+        foregroundColor: colors.title,
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              AppColors.softLavender,
-              AppColors.background,
-              AppColors.cream,
-            ],
+            colors: [colors.backgroundTop, colors.background],
           ),
         ),
         child: SafeArea(
@@ -38,11 +36,11 @@ class AboutScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
             children: [
               // App name.
-              const Text(
+              Text(
                 'نور لها',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: AppColors.deepPurple,
+                  color: colors.title,
                   fontSize: 36,
                   fontWeight: FontWeight.bold,
                 ),
@@ -51,12 +49,12 @@ class AboutScreen extends StatelessWidget {
               const SizedBox(height: 20),
 
               // Short description.
-              const Text(
+              Text(
                 'تطبيق لقراءة القرآن الكريم،\n'
                     'صدقة جارية يُهدى ثوابها للمرحومة بإذن الله.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: AppColors.text,
+                  color: colors.bodyText,
                   fontSize: 17,
                   height: 1.9,
                 ),
@@ -71,28 +69,19 @@ class AboutScreen extends StatelessWidget {
                   vertical: 26,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.softLavender,
+                  color: colors.card,
                   borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: colors.border),
                 ),
-                child: const Column(
-                  children: [
-                    Icon(
-                      Icons.favorite_rounded,
-                      color: AppColors.primary,
-                      size: 24,
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      'اللهم اجعل نور القرآن\nنورًا لها في قبرها',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: AppColors.deepPurple,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        height: 1.8,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'اللهم اجعل نور القرآن\nنورًا لها في قبرها',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: colors.title,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    height: 1.8,
+                  ),
                 ),
               ),
             ],

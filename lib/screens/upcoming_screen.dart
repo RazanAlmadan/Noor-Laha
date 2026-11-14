@@ -19,25 +19,24 @@ class UpcomingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
+
     return Scaffold(
       // Show an app bar only when there is a previous screen to go back to.
       appBar: showBackButton
           ? AppBar(
-        backgroundColor: AppColors.softLavender,
-        foregroundColor: AppColors.deepPurple,
+        backgroundColor: colors.backgroundTop,
+        foregroundColor: colors.title,
         elevation: 0,
         scrolledUnderElevation: 0,
       )
           : null,
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              AppColors.softLavender,
-              AppColors.background,
-            ],
+            colors: [colors.backgroundTop, colors.background],
           ),
         ),
         child: SafeArea(
@@ -48,22 +47,22 @@ class UpcomingScreen extends StatelessWidget {
                 Icon(
                   icon,
                   size: 64,
-                  color: AppColors.primary,
+                  color: colors.accent,
                 ),
                 const SizedBox(height: 20),
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.deepPurple,
+                    color: colors.title,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'سنجهز هذه الصفحة قريبًا بإذن الله',
                   style: TextStyle(
-                    color: AppColors.mutedText,
+                    color: colors.mutedText,
                     fontSize: 16,
                   ),
                 ),
