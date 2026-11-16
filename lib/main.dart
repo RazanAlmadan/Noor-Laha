@@ -4,12 +4,17 @@ import 'package:flutter/services.dart';
 import 'core/app_colors.dart';
 import 'core/app_theme.dart';
 import 'core/theme_controller.dart';
+import 'core/reader_settings.dart';
 import 'screens/home_screen.dart';
 import 'screens/more_screen.dart';
 import 'screens/quran_screen.dart';
 import 'screens/upcoming_screen.dart';
 
-void main() {
+
+Future<void> main() async {
+  // Needed because we use plugins before runApp.
+  WidgetsFlutterBinding.ensureInitialized();
+  await loadReaderSettings();
   runApp(const NoorLahaApp());
 }
 
