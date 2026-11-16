@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -273,6 +274,10 @@ class _MushafPageState extends State<_MushafPage> {
 
   late final List<_PageBlock> _blocks = _buildBlocks();
 
+  // Ayahs where a new quarter of a hizb begins (used for the ۞ sign).
+  // The first quarter is the start of the Quran itself, so it gets no sign.
+  late final Set<AyahRef> _quarterStarts = widget.data.quarterStarts.skip(1).toSet();
+
   @override
   void dispose() {
     for (final TapGestureRecognizer r in _recognizers.values) {
@@ -305,6 +310,10 @@ class _MushafPageState extends State<_MushafPage> {
 
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.8,
+      ),
       backgroundColor: context.colors.card,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -317,6 +326,7 @@ class _MushafPageState extends State<_MushafPage> {
     setState(() => _selected = null);
   }
 
+  // Builds the flowing text of one surah block on this page.
   Widget _buildAyahText(
       _PageBlock block,
       double fontSize,
@@ -324,42 +334,118 @@ class _MushafPageState extends State<_MushafPage> {
       AppPalette colors,
       ) {
     final Surah surah = widget.data.surahs[block.surah - 1];
-    final List<InlineSpan> spans = [];
+    final List<TextSpan> spans = [];
+    final List<TextRange> lineRanges = [];
+
+    // Length of the text so far. The sajda line needs exact positions.
+    int offset = 0;
+    void add(TextSpan span) {
+      spans.add(span);
+      offset += span.text?.length ?? 0;
+    }
 
     for (final int n in block.ayahs) {
       final AyahRef ref = AyahRef(block.surah, n);
+      final TapGestureRecognizer tap = _recognizerFor(ref);
+      final Color? highlight =
+      _selected == ref ? colors.accent.withValues(alpha: 0.18) : null;
+      final TextStyle base = TextStyle(backgroundColor: highlight);
+      final String ayahText = surah.ayahs[n - 1];
 
-      spans.add(
-        TextSpan(
-          text: surah.ayahs[n - 1],
-          recognizer: _recognizerFor(ref),
-          style: _selected == ref
-              ? TextStyle(backgroundColor: colors.accent.withValues(alpha: 0.18))
-              : null,
-        ),
+      // Rub el Hizb sign at the start of every quarter of a hizb.
+      if (_quarterStarts.contains(ref) && !ayahText.contains('\u06DE')) {
+        add(
+          TextSpan(
+            text: _kHizbSign,
+            recognizer: tap,
+            style: _signStyle(family, fontSize, colors.accent, highlight),
+          ),
+        );
+        add(TextSpan(text: ' ', recognizer: tap, style: base));
+      }
+
+      // The ayah words, with the signs drawn by the sign font.
+      final List<TextSpan> words = _ayahTextSpans(
+        ayahText,
+        fontSize: fontSize,
+        family: family,
+        signColor: colors.accent,
+        recognizer: tap,
+        highlight: highlight,
+        startOffset: offset,
+        lineWords: _kSajdaLines['${block.surah}:$n'],
+        lineRanges: lineRanges,
       );
-      spans.add(const TextSpan(text: ' '));
-      spans.add(
-        WidgetSpan(
-          alignment: PlaceholderAlignment.middle,
-          child: GestureDetector(
-            onTap: () => _onTapAyah(ref),
-            child: _AyahMarker(number: n, size: fontSize * 1.3),
+      for (final TextSpan s in words) {
+        add(s);
+      }
+
+      // U+200F (RLM) keeps the sign and the ayah number as separate runs,
+      // so they can never swap places.
+      add(TextSpan(text: ' \u200F', recognizer: tap, style: base));
+
+      // The ayah number is a glyph from our AyahMarker font (U+E000 + number).
+      add(
+        TextSpan(
+          text: String.fromCharCode(0xE000 + n),
+          recognizer: tap,
+          style: TextStyle(
+            fontFamily: 'AyahMarker',
+            fontSize: fontSize,
+            color: colors.accent,
+            height: 0.01,
+            backgroundColor: highlight,
           ),
         ),
       );
-      spans.add(const TextSpan(text: ' '));
+      add(const TextSpan(text: ' \u200F'));
     }
 
-    return Text.rich(
-      TextSpan(children: spans),
-      textAlign: TextAlign.justify,
+    return _LinedText(
+      span: TextSpan(children: spans),
       style: TextStyle(
         fontFamily: family,
         fontSize: fontSize,
         height: 2.0,
         color: colors.bodyText,
       ),
+      lineRanges: lineRanges,
+      lineColor: colors.accent,
+      fontSize: fontSize,
+      // Share of the line box that is above the baseline (depends on the font).
+      ascentRatio: family == 'ScheherazadeNew' ? 0.658 : 0.741,
+    );
+  }
+
+  // One surah block inside the box: optional small banner, Basmala, ayahs.
+  Widget _buildBlock(
+      _PageBlock block,
+      bool isFirst,
+      double fontSize,
+      String family,
+      AppPalette colors,
+      ) {
+    final Surah surah = widget.data.surahs[block.surah - 1];
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // A surah that begins in the middle of the page gets a small banner
+        // inside the same box. (At the top of a page the big arch is used.)
+        if (block.startsSurah && !isFirst)
+          Padding(
+            padding: const EdgeInsets.only(top: 18, bottom: 6),
+            child: _InlineSurahBanner(surah: surah),
+          ),
+        if (block.startsSurah && surah.showsBasmalaHeader)
+          _BasmalaHeader(
+            basmala: widget.data.basmala,
+            fontSize: fontSize,
+            fontFamily: family,
+          ),
+        _buildAyahText(block, fontSize, family, colors),
+      ],
     );
   }
 
@@ -374,22 +460,33 @@ class _MushafPageState extends State<_MushafPage> {
         final double fontSize = readerFontSizeNotifier.value;
         final String family = fontFamilyOf(readerFontNotifier.value);
 
+        // One box for the whole page.
+        final Widget box = _AyahBox(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (int i = 0; i < _blocks.length; i++)
+                _buildBlock(_blocks[i], i == 0, fontSize, family, colors),
+            ],
+          ),
+        );
+
+        // If a surah starts at the very top of the page, the big arch banner
+        // sits on top of the box and touches it.
+        final _PageBlock first = _blocks.first;
+        final Widget framed = first.startsSurah
+            ? _BannerOverBox(
+          surah: widget.data.surahs[first.surah - 1],
+          child: box,
+        )
+            : box;
+
         final Widget content = Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final _PageBlock block in _blocks) ...[
-              if (block.startsSurah)
-                _SurahBanner(
-                  surah: widget.data.surahs[block.surah - 1],
-                  basmala: widget.data.surahs[block.surah - 1].showsBasmalaHeader
-                      ? widget.data.basmala
-                      : null,
-                  fontSize: fontSize,
-                  fontFamily: family,
-                ),
-              _buildAyahText(block, fontSize, family, colors),
-            ],
+            framed,
             const SizedBox(height: 12),
             Text(
               toArabicDigits(widget.page),
@@ -399,44 +496,493 @@ class _MushafPageState extends State<_MushafPage> {
           ],
         );
 
-        const EdgeInsets padding = EdgeInsets.fromLTRB(14, 12, 14, 16);
+        const EdgeInsets padding = EdgeInsets.fromLTRB(12, 6, 12, 16);
 
-        return Container(
-          margin: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-          decoration: BoxDecoration(
-            color: colors.card,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: colors.border, width: 1.5),
-          ),
-          // Inner thin frame: gives the double border of a mushaf page.
-          child: Container(
-            margin: const EdgeInsets.all(5),
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: colors.accent.withValues(alpha: 0.35)),
+        return widget.scrollable
+            ? SingleChildScrollView(padding: padding, child: content)
+            : Padding(padding: padding, child: content);
+      },
+    );
+  }
+}
+
+// Quran signs are drawn with our own sign fonts, so they always sit in the
+// right place. The Quran text itself is never changed (copy uses it).
+const Map<int, int> _kSignGlyphs = {
+  0x06D6: 0xE300, // pause signs
+  0x06D7: 0xE301,
+  0x06D8: 0xE302,
+  0x06D9: 0xE303,
+  0x06DA: 0xE304,
+  0x06DB: 0xE305,
+  0x06DC: 0xE306,
+  0x06DE: 0xE310, // rub el hizb
+  0x06E9: 0xE311, // sajda
+};
+
+// Rub el Hizb glyph (added at the start of each quarter).
+const String _kHizbSign = '\uE310';
+
+// True when the token is only signs (no letters).
+bool _isSignToken(String token) {
+  return token.isNotEmpty && token.runes.every(_kSignGlyphs.containsKey);
+}
+
+// Pause signs (ج، قلى، صلى...) sit on top of the last letter of the word.
+bool _isPauseSign(String token) {
+  return token.runes.every((c) => c >= 0x06D6 && c <= 0x06DC);
+}
+
+// Each sign font has the same vertical metrics as its reading font, so a
+// sign never changes the line height and is highlighted like normal text.
+String _signFamilyOf(String readerFamily) {
+  return readerFamily == 'ScheherazadeNew'
+      ? 'QuranSignsSch'
+      : 'QuranSignsAmiri';
+}
+
+TextStyle _signStyle(
+    String readerFamily,
+    double fontSize,
+    Color color,
+    Color? highlight,
+    ) {
+  return TextStyle(
+    fontFamily: _signFamilyOf(readerFamily),
+    fontSize: fontSize,
+    color: color,
+    backgroundColor: highlight,
+  );
+}
+
+// Splits the ayah text into spans: normal words stay as text, sign tokens
+// become sign-font glyphs.
+// If [lineWords] is given, the text range of those words is added to
+// [lineRanges] (it is used to draw the sajda line above them).
+List<TextSpan> _ayahTextSpans(
+    String text, {
+      required double fontSize,
+      required String family,
+      required Color signColor,
+      GestureRecognizer? recognizer,
+      Color? highlight,
+      int startOffset = 0,
+      _WordRange? lineWords,
+      List<TextRange>? lineRanges,
+    }) {
+  final List<TextSpan> spans = [];
+  final TextStyle plainStyle = TextStyle(backgroundColor: highlight);
+  final StringBuffer plain = StringBuffer();
+  int pos = startOffset;
+  int? lineStart;
+  int? lineEnd;
+
+  void flush() {
+    if (plain.isEmpty) return;
+    spans.add(
+      TextSpan(text: plain.toString(), recognizer: recognizer, style: plainStyle),
+    );
+    plain.clear();
+  }
+
+  final List<String> tokens = text.split(' ');
+  for (int i = 0; i < tokens.length; i++) {
+    final String token = tokens[i];
+    final bool isSign = _isSignToken(token);
+
+    // A pause sign has no space before it: it sits on the last letter of the
+    // word before it. Every other token keeps its normal space.
+    if (i > 0 && !(isSign && _isPauseSign(token))) {
+      plain.write(' ');
+      pos += 1;
+    }
+
+    if (isSign) {
+      flush();
+      final String glyphs =
+      String.fromCharCodes(token.runes.map((c) => _kSignGlyphs[c]!));
+      spans.add(
+        TextSpan(
+          text: glyphs,
+          recognizer: recognizer,
+          style: _signStyle(family, fontSize, signColor, highlight),
+        ),
+      );
+      pos += glyphs.length;
+    } else {
+      if (lineWords != null && i == lineWords.from) lineStart = pos;
+      plain.write(token);
+      pos += token.length;
+      if (lineWords != null && i == lineWords.to) lineEnd = pos;
+    }
+  }
+  flush();
+
+  if (lineStart != null && lineEnd != null) {
+    lineRanges?.add(TextRange(start: lineStart, end: lineEnd));
+  }
+  return spans;
+}
+
+// Word range (word numbers inside the ayah, starting at 0) that gets the
+// sajda line above it.
+class _WordRange {
+  final int from;
+  final int to; // inclusive
+
+  const _WordRange(this.from, this.to);
+}
+
+// Words that get the sajda line. Key is 'surah:ayah'.
+// NOTE: this list came from the user's reference and must be checked
+// against the mushaf. Edit the numbers here if a line is on the wrong words.
+const Map<String, _WordRange> _kSajdaLines = {
+  '7:206': _WordRange(9, 10), // وَلَهُۥ يَسْجُدُونَ
+  '13:15': _WordRange(0, 5), // وَلِلَّهِ يَسْجُدُ ... وَٱلْأَرْضِ
+  '16:49': _WordRange(1, 1), // يَسْجُدُ
+  '17:107': _WordRange(16, 16), // يَخِرُّونَ
+  '19:58': _WordRange(27, 29), // خَرُّوا۟ سُجَّدًا وَبُكِيًّا
+  '22:18': _WordRange(0, 11), // أَلَمْ تَرَ ... ٱلْأَرْضِ
+  '22:77': _WordRange(0, 4), // يَـٰٓأَيُّهَا ... وَٱسْجُدُوا۟
+  '25:60': _WordRange(0, 4), // وَإِذَا قِيلَ لَهُمُ ٱسْجُدُوا۟ لِلرَّحْمَـٰنِ
+  '27:25': _WordRange(1, 1), // يَسْجُدُوا۟
+  '32:15': _WordRange(0, 8), // إِنَّمَا ... خَرُّوا۟ سُجَّدًا
+  '38:24': _WordRange(29, 33), // فَٱسْتَغْفَرَ ... وَأَنَابَ
+  '41:37': _WordRange(12, 12), // وَٱسْجُدُوا۟
+  '53:62': _WordRange(0, 2), // فَٱسْجُدُوا۟ لِلَّهِ وَٱعْبُدُوا۟
+  '84:21': _WordRange(0, 5), // وَإِذَا قُرِئَ ... لَا يَسْجُدُونَ
+  '96:19': _WordRange(0, 4), // كَلَّا لَا تُطِعْهُ وَٱسْجُدْ وَٱقْتَرِب
+};
+
+// How high above the baseline the sajda line is drawn (in font sizes).
+const double _kSajdaLineHeight = 1.25;
+
+// A text with an optional line drawn above some of its words.
+class _LinedText extends StatefulWidget {
+  final TextSpan span;
+  final TextStyle style;
+  final List<TextRange> lineRanges;
+  final Color lineColor;
+  final double fontSize;
+  final double ascentRatio;
+
+  const _LinedText({
+    required this.span,
+    required this.style,
+    required this.lineRanges,
+    required this.lineColor,
+    required this.fontSize,
+    required this.ascentRatio,
+  });
+
+  @override
+  State<_LinedText> createState() => _LinedTextState();
+}
+
+class _LinedTextState extends State<_LinedText> {
+  final GlobalKey _textKey = GlobalKey();
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget text = Text.rich(
+      widget.span,
+      key: _textKey,
+      textAlign: TextAlign.justify,
+      style: widget.style,
+    );
+
+    // Most pages have no sajda line, so they stay a plain Text.
+    if (widget.lineRanges.isEmpty) return text;
+
+    return Stack(
+      children: [
+        text,
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: _SajdaLinePainter(
+                textKey: _textKey,
+                ranges: widget.lineRanges,
+                color: widget.lineColor,
+                fontSize: widget.fontSize,
+                ascentRatio: widget.ascentRatio,
+              ),
             ),
-            child: widget.scrollable
-                ? SingleChildScrollView(padding: padding, child: content)
-                : Padding(padding: padding, child: content),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+// Draws the sajda line above the given text ranges. It asks the text for the
+// real position of the words, so it follows the layout at any font size.
+class _SajdaLinePainter extends CustomPainter {
+  final GlobalKey textKey;
+  final List<TextRange> ranges;
+  final Color color;
+  final double fontSize;
+  final double ascentRatio;
+
+  const _SajdaLinePainter({
+    required this.textKey,
+    required this.ranges,
+    required this.color,
+    required this.fontSize,
+    required this.ascentRatio,
+  });
+
+  RenderParagraph? _findParagraph(RenderObject? object) {
+    if (object is RenderParagraph) return object;
+    RenderParagraph? found;
+    object?.visitChildren((child) {
+      found ??= _findParagraph(child);
+    });
+    return found;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final RenderParagraph? paragraph =
+    _findParagraph(textKey.currentContext?.findRenderObject());
+    if (paragraph == null) return;
+
+    final Paint paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round;
+
+    for (final TextRange range in ranges) {
+      final boxes = paragraph.getBoxesForSelection(
+        TextSelection(baseOffset: range.start, extentOffset: range.end),
+      );
+
+      // One segment per text line: [left, right, baseline].
+      final Map<int, List<double>> segments = {};
+      for (final box in boxes) {
+        if (box.right - box.left <= 0) continue;
+
+        // The baseline is a fixed share of the box height (from the top).
+        final double baseline =
+            box.top + (box.bottom - box.top) * ascentRatio;
+        final int lineKey = baseline.round();
+
+        final List<double>? s = segments[lineKey];
+        if (s == null) {
+          segments[lineKey] = [box.left, box.right, baseline];
+        } else {
+          if (box.left < s[0]) s[0] = box.left;
+          if (box.right > s[1]) s[1] = box.right;
+        }
+      }
+
+      for (final List<double> s in segments.values) {
+        final double y = s[2] - fontSize * _kSajdaLineHeight;
+        canvas.drawLine(Offset(s[0] - 1, y), Offset(s[1] + 1, y), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+// Folder of the ornament images. They are black with a transparent
+// background, so we can paint them in any color.
+const String _ornamentsPath = 'assets/images/ornaments';
+
+// Shows one ornament image painted in [color].
+// BlendMode.srcIn keeps the shape of the image and replaces its color.
+class _Ornament extends StatelessWidget {
+  final String file;
+  final Color color;
+  final BoxFit fit;
+
+  const _Ornament({
+    required this.file,
+    required this.color,
+    this.fit = BoxFit.fill,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      '$_ornamentsPath/$file',
+      color: color,
+      colorBlendMode: BlendMode.srcIn,
+      fit: fit,
+      filterQuality: FilterQuality.medium,
+      excludeFromSemantics: true,
+    );
+  }
+}
+
+// Width / height of the arch banner (a bit taller than the image so the
+// name and the details both fit).
+const double _kArchRatio = 1200 / 430;
+
+// Puts the arch banner on top of the box so that it touches the box edge.
+class _BannerOverBox extends StatelessWidget {
+  final Surah surah;
+  final Widget child; // the box
+
+  const _BannerOverBox({required this.surah, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double bannerHeight = constraints.maxWidth / _kArchRatio;
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // The box starts 3px above the banner bottom so they overlap.
+            Padding(
+              padding: EdgeInsets.only(top: bannerHeight - 3),
+              child: child,
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: bannerHeight,
+              child: _SurahBanner(surah: surah),
+            ),
+          ],
         );
       },
     );
   }
 }
 
-// Surah header: a pointed arch with a crescent, the name and details.
-// The Basmala and a decorative divider are shown under it when the surah
-// has a Basmala.
+// Big arch banner with the surah name and its details inside.
+// It fills the space it is given (see _BannerOverBox).
 class _SurahBanner extends StatelessWidget {
   final Surah surah;
-  final String? basmala;
+
+  const _SurahBanner({required this.surah});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final String type = surah.isMeccan ? 'مكية' : 'مدنية';
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _Ornament(file: 'ornament_banner_fill.png', color: colors.softSurface),
+        _Ornament(file: 'ornament_banner_line.png', color: colors.accent),
+        // Name in the wide body of the frame.
+        Align(
+          alignment: const Alignment(0, 0.30),
+          child: Text(
+            'سورة ${surah.name}',
+            style: TextStyle(
+              color: colors.title,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        Align(
+          alignment: const Alignment(0, 0.66),
+          child: Text(
+            '$type · ${toArabicDigits(surah.ayahCount)} آية',
+            style: TextStyle(color: colors.mutedText, fontSize: 11.5),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Small banner for a surah that starts in the middle of a page.
+// It sits inside the box, between the ayahs.
+class _InlineSurahBanner extends StatelessWidget {
+  final Surah surah;
+
+  const _InlineSurahBanner({required this.surah});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    final String type = surah.isMeccan ? 'مكية' : 'مدنية';
+
+    return AspectRatio(
+      aspectRatio: 1000 / 153,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _Ornament(file: 'ornament_inline_fill.png', color: colors.softSurface),
+          _Ornament(file: 'ornament_inline_line.png', color: colors.accent),
+          // scaleDown only shrinks the text if a long name does not fit.
+          Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'سورة ${surah.name}',
+                    style: TextStyle(
+                      color: colors.title,
+                      fontSize: 19,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '$type · ${toArabicDigits(surah.ayahCount)} آية',
+                    style: TextStyle(color: colors.mutedText, fontSize: 11.5),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// The framed box that holds the ayahs (double border, like a mushaf page).
+class _AyahBox extends StatelessWidget {
+  final Widget child;
+
+  const _AyahBox({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.border, width: 1.5),
+      ),
+      // Inner thin frame: gives the double border.
+      child: Container(
+        margin: const EdgeInsets.all(5),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: colors.accent.withValues(alpha: 0.35)),
+        ),
+        child: child,
+      ),
+    );
+  }
+}
+
+// The Basmala with a soft divider under it (inside the box, above the ayahs).
+class _BasmalaHeader extends StatelessWidget {
+  final String basmala;
   final double fontSize;
   final String fontFamily;
 
-  const _SurahBanner({
-    required this.surah,
+  const _BasmalaHeader({
     required this.basmala,
     required this.fontSize,
     required this.fontFamily,
@@ -445,346 +991,98 @@ class _SurahBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final String type = surah.isMeccan ? 'مكية' : 'مدنية';
-    // Fixed above: the first label is replaced just below.
 
     return Column(
       children: [
-        SizedBox(
-          height: 124,
-          width: double.infinity,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: _ArchBannerPainter(
-                    line: colors.accent,
-                    fill: colors.softSurface,
-                  ),
-                ),
-              ),
-              // Crescent, name and details sit inside the arch.
-              Positioned.fill(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 17),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.nightlight_round,
-                        size: 16,
-                        color: colors.accent,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'سورة ${surah.name}',
-                        style: TextStyle(
-                          color: colors.title,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      SizedBox(
-                        width: 130,
-                        height: 12,
-                        child: CustomPaint(
-                          painter: _OrnamentDividerPainter(
-                            line: colors.accent,
-                            fill: colors.softSurface,
-                            scale: 0.6,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '$type · ${toArabicDigits(surah.ayahCount)} آية',
-                        style: TextStyle(color: colors.mutedText, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+        Text(
+          basmala,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: fontFamily,
+            fontSize: fontSize,
+            height: 2.0,
+            color: colors.title,
           ),
         ),
-        if (basmala != null) ...[
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              basmala!,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: fontFamily,
-                fontSize: fontSize,
-                height: 2.0,
-                color: colors.title,
-              ),
-            ),
+        SizedBox(
+          height: 22,
+          width: double.infinity,
+          child: CustomPaint(
+            painter: _SoftDividerPainter(line: colors.accent),
           ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(24, 0, 24, 8),
-            child: _OrnamentDivider(),
-          ),
-        ] else
-          const SizedBox(height: 8),
+        ),
       ],
     );
   }
 }
 
-// Draws the arch outline (outer and inner line) with its fill.
-class _ArchBannerPainter extends CustomPainter {
+// Soft divider: two lines that fade out at the ends, two tiny diamonds,
+// and a small outlined four-petal flower in the middle.
+class _SoftDividerPainter extends CustomPainter {
   final Color line;
-  final Color fill;
 
-  const _ArchBannerPainter({required this.line, required this.fill});
-
-  // The whole header shape: a wide body with a pointed dome in the middle.
-  // It is built for a box of w x h, starting at (0, 0).
-  Path _shell(double w, double h) {
-    const double m = 3; // side margin
-    const double top = 9; // room above the tip of the dome
-    final double cx = w / 2;
-    final double hh = h - top;
-    double y(double f) => top + hh * f;
-
-    final double sy = y(0.52); // height of the shoulders
-    final double dh = w * 0.3; // half width of the dome
-
-    return Path()
-      ..moveTo(m, h - 2)
-      ..lineTo(m, sy + 12)
-    // Rounded corner, then the left shoulder.
-      ..quadraticBezierTo(m, sy, m + 14, sy)
-      ..lineTo(cx - dh - 16, sy)
-    // Left side of the dome: a small fillet, then up to the tip.
-      ..cubicTo(cx - dh - 4, sy, cx - dh, sy - 6, cx - dh, sy - 20)
-      ..cubicTo(cx - dh, y(0.2), cx - 0.5 * dh, y(0.14), cx - 0.14 * dh, y(0.07))
-      ..cubicTo(
-        cx - 0.07 * dh, y(0.04), cx - 0.03 * dh, y(0.03), cx, top,
-      )
-    // Right side of the dome (mirror of the left side).
-      ..cubicTo(
-        cx + 0.03 * dh, y(0.03), cx + 0.07 * dh, y(0.04), cx + 0.14 * dh, y(0.07),
-      )
-      ..cubicTo(cx + 0.5 * dh, y(0.14), cx + dh, y(0.2), cx + dh, sy - 20)
-      ..cubicTo(cx + dh, sy - 6, cx + dh + 4, sy, cx + dh + 16, sy)
-      ..lineTo(w - m - 14, sy)
-      ..quadraticBezierTo(w - m, sy, w - m, sy + 12)
-      ..lineTo(w - m, h - 2)
-      ..close();
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Path outer = _shell(size.width, size.height);
-    // The inner outline is a smaller copy moved 6px inside.
-    final Path inner =
-    _shell(size.width - 12, size.height - 12).shift(const Offset(6, 6));
-
-    canvas.drawPath(outer, Paint()..color = fill);
-    canvas.drawPath(
-      outer,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.8
-        ..color = line,
-    );
-    canvas.drawPath(
-      inner,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.8
-        ..color = line.withValues(alpha: 0.5),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_ArchBannerPainter old) =>
-      old.line != line || old.fill != fill;
-}
-
-// Decorative divider: two lines that fade out at the ends, with a small
-// four-petal flower and two diamonds in the middle.
-class _OrnamentDivider extends StatelessWidget {
-  const _OrnamentDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-
-    return SizedBox(
-      height: 22,
-      width: double.infinity,
-      child: CustomPaint(
-        painter: _OrnamentDividerPainter(
-          line: colors.accent,
-          fill: colors.card,
-          scale: 1.0,
-        ),
-      ),
-    );
-  }
-}
-
-class _OrnamentDividerPainter extends CustomPainter {
-  final Color line;
-  final Color fill;
-  final double scale; // 1.0 = normal size, smaller = more compact
-
-  const _OrnamentDividerPainter({
-    required this.line,
-    required this.fill,
-    required this.scale,
-  });
+  const _SoftDividerPainter({required this.line});
 
   @override
   void paint(Canvas canvas, Size size) {
     final double w = size.width;
     final double cx = w / 2;
     final double cy = size.height / 2;
-    final double gap = 22 * scale; // empty space reserved for the ornament
-    final double lineLength = math.max(cx - gap, 1);
+    const double gap = 24; // empty space for the ornament in the middle
+    final double lineLength = math.max(cx - gap - 10, 1);
 
     // Left line fades in toward the center, right line fades out.
     final Paint linePaint = Paint()
-      ..strokeWidth = 1.2
+      ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
 
     linePaint.shader = LinearGradient(
-      colors: [line.withValues(alpha: 0), line],
-    ).createShader(Rect.fromLTWH(0, 0, lineLength, size.height));
-    canvas.drawLine(Offset(0, cy), Offset(cx - gap, cy), linePaint);
+      colors: [line.withValues(alpha: 0), line.withValues(alpha: 0.8)],
+    ).createShader(Rect.fromLTWH(10, 0, lineLength, size.height));
+    canvas.drawLine(Offset(10, cy), Offset(cx - gap, cy), linePaint);
 
     linePaint.shader = LinearGradient(
-      colors: [line, line.withValues(alpha: 0)],
+      colors: [line.withValues(alpha: 0.8), line.withValues(alpha: 0)],
     ).createShader(Rect.fromLTWH(cx + gap, 0, lineLength, size.height));
-    canvas.drawLine(Offset(cx + gap, cy), Offset(w, cy), linePaint);
+    canvas.drawLine(Offset(cx + gap, cy), Offset(w - 10, cy), linePaint);
 
-    // Two small diamonds next to the center.
-    void diamond(Offset c, double r) {
-      final Path p = Path()
-        ..moveTo(c.dx, c.dy - r)
-        ..lineTo(c.dx + r, c.dy)
-        ..lineTo(c.dx, c.dy + r)
-        ..lineTo(c.dx - r, c.dy)
+    // Two tiny diamonds next to the flower.
+    final Paint diamondPaint = Paint()..color = line.withValues(alpha: 0.7);
+    for (final double dx in [-16.0, 16.0]) {
+      final Path d = Path()
+        ..moveTo(cx + dx, cy - 2.4)
+        ..lineTo(cx + dx + 2.4, cy)
+        ..lineTo(cx + dx, cy + 2.4)
+        ..lineTo(cx + dx - 2.4, cy)
         ..close();
-      canvas.drawPath(p, Paint()..color = line);
+      canvas.drawPath(d, diamondPaint);
     }
 
-    diamond(Offset(cx - 16 * scale, cy), 2.6 * scale);
-    diamond(Offset(cx + 16 * scale, cy), 2.6 * scale);
+    // Four thin pointed petals, outline only.
+    final Paint petalPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..strokeJoin = StrokeJoin.round
+      ..color = line.withValues(alpha: 0.9);
 
-    // Four-petal flower in the center.
-    final Paint petal = Paint()..color = line;
     for (int i = 0; i < 4; i++) {
       canvas.save();
       canvas.translate(cx, cy);
       canvas.rotate(i * math.pi / 2);
-      canvas.drawOval(
-        Rect.fromCenter(
-          center: Offset(0, -4.5 * scale),
-          width: 5 * scale,
-          height: 9 * scale,
-        ),
-        petal,
-      );
+      final Path petal = Path()
+        ..moveTo(0, -1.8)
+        ..quadraticBezierTo(-3.8, -4.7, 0, -7.6)
+        ..quadraticBezierTo(3.8, -4.7, 0, -1.8);
+      canvas.drawPath(petal, petalPaint);
       canvas.restore();
     }
-    // Small dot in the middle of the flower.
-    canvas.drawCircle(Offset(cx, cy), 1.8 * scale, Paint()..color = fill);
+
+    // Small dot in the center.
+    canvas.drawCircle(Offset(cx, cy), 1.2, Paint()..color = line);
   }
 
   @override
-  bool shouldRepaint(_OrnamentDividerPainter old) =>
-      old.line != line || old.fill != fill || old.scale != scale;
-}
-
-// Ayah number inside a rounded 8-lobe star, like in a mushaf.
-// Its size follows the font size.
-class _AyahMarker extends StatelessWidget {
-  final int number;
-  final double size;
-
-  const _AyahMarker({required this.number, required this.size});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-
-    return CustomPaint(
-      size: Size(size, size),
-      painter: _StarMarkerPainter(line: colors.accent, fill: colors.softSurface),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Center(
-          child: Text(
-            toArabicDigits(number),
-            style: TextStyle(
-              color: colors.title,
-              fontSize: size * 0.36,
-              fontWeight: FontWeight.bold,
-              height: 1.0,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StarMarkerPainter extends CustomPainter {
-  final Color line;
-  final Color fill;
-
-  const _StarMarkerPainter({required this.line, required this.fill});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Offset c = size.center(Offset.zero);
-    const int lobes = 8;
-
-    final double peak = size.width / 2 * 0.95; // distance to the lobe tips
-    final double valley = peak * 0.80; // distance to the dips between lobes
-
-    // Each lobe is a curve from one dip to the next. The control point is
-    // pushed out so that the curve reaches (about) the peak distance.
-    final double controlR = (peak - 0.5 * math.cos(math.pi / lobes) * valley) / 0.5;
-
-    Offset at(double angle, double radius) {
-      return c + Offset(math.cos(angle) * radius, math.sin(angle) * radius);
-    }
-
-    final Path path = Path();
-    for (int i = 0; i < lobes; i++) {
-      final double a0 = 2 * math.pi * (i - 0.5) / lobes;
-      final double a1 = 2 * math.pi * (i + 0.5) / lobes;
-      final double am = 2 * math.pi * i / lobes;
-
-      final Offset start = at(a0, valley);
-      final Offset end = at(a1, valley);
-      final Offset control = at(am, controlR);
-
-      if (i == 0) path.moveTo(start.dx, start.dy);
-      path.quadraticBezierTo(control.dx, control.dy, end.dx, end.dy);
-    }
-    path.close();
-
-    canvas.drawPath(path, Paint()..color = fill);
-    canvas.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = math.max(1.4, size.width * 0.055)
-        ..strokeJoin = StrokeJoin.round
-        ..color = line,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_StarMarkerPainter old) =>
-      old.line != line || old.fill != fill;
+  bool shouldRepaint(_SoftDividerPainter old) => old.line != line;
 }
 
 // Bottom sheet shown when an ayah is tapped. More actions come later
@@ -828,22 +1126,39 @@ class _AyahSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'سورة ${surah.name} · الآية ${toArabicDigits(ref.ayah)}',
-              style: TextStyle(
-                color: colors.title,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              surah.ayahs[ref.ayah - 1],
-              style: TextStyle(
-                fontFamily: fontFamilyOf(readerFontNotifier.value),
-                fontSize: 24,
-                height: 2.0,
-                color: colors.bodyText,
+            // The title and the ayah scroll when the ayah is long.
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'سورة ${surah.name} · الآية ${toArabicDigits(ref.ayah)}',
+                      style: TextStyle(
+                        color: colors.title,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text.rich(
+                      TextSpan(
+                        children: _ayahTextSpans(
+                          surah.ayahs[ref.ayah - 1],
+                          fontSize: 24,
+                          family: fontFamilyOf(readerFontNotifier.value),
+                          signColor: colors.accent,
+                        ),
+                      ),
+                      style: TextStyle(
+                        fontFamily: fontFamilyOf(readerFontNotifier.value),
+                        fontSize: 24,
+                        height: 2.0,
+                        color: colors.bodyText,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 8),

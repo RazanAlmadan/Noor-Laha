@@ -58,6 +58,7 @@ flutter:
   assets:
     - assets/images/noor_laha_home_hero.png
     - assets/data/quran.json
+    - assets/images/ornaments/
 
   fonts:
     - family: Tajawal
@@ -74,3 +75,12 @@ flutter:
     - family: ScheherazadeNew
       fonts:
         - asset: assets/fonts/ScheherazadeNew-Regular.ttf
+    - family: AyahMarker
+      fonts:
+        - asset: assets/fonts/AyahMarker.ttf
+    - family: QuranSignsAmiri
+      fonts:
+        - asset: assets/fonts/QuranSignsAmiri.ttf
+    - family: QuranSignsSch
+      fonts:
+        - asset: assets/fonts/QuranSignsSch.ttf

@@ -28,6 +28,9 @@ class Surah {
   final int ayahCount;
   final List<String> ayahs;
 
+  // True when one of the ayahs has the sajda sign (U+06E9) in the text.
+  final bool hasSajda;
+
   const Surah({
     required this.number,
     required this.name,
@@ -37,9 +40,12 @@ class Surah {
     required this.revelationOrder,
     required this.ayahCount,
     required this.ayahs,
+    required this.hasSajda,
   });
 
   factory Surah.fromJson(Map<String, dynamic> json) {
+    final List<String> ayahs = (json['ayahs'] as List).cast<String>();
+
     return Surah(
       number: json['number'] as int,
       name: json['name'] as String,
@@ -48,7 +54,8 @@ class Surah {
       type: json['type'] as String,
       revelationOrder: json['revelationOrder'] as int,
       ayahCount: json['ayahCount'] as int,
-      ayahs: (json['ayahs'] as List).cast<String>(),
+      ayahs: ayahs,
+      hasSajda: ayahs.any((a) => a.contains('\u06E9')),
     );
   }
 

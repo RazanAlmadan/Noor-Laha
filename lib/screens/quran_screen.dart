@@ -222,11 +222,52 @@ class _SurahTile extends StatelessWidget {
                   ),
                 ),
 
+                // Sajda sign: centered in the card, with space from the arrow.
+                if (surah.hasSajda) ...[
+                  const SizedBox(width: 8),
+                  const _SajdaMark(),
+                  const SizedBox(width: 12),
+                ],
+
                 Icon(
                   Icons.chevron_left_rounded,
                   color: colors.mutedText,
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Sajda sign for the surah list, centered in the card height.
+class _SajdaMark extends StatelessWidget {
+  const _SajdaMark();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return Tooltip(
+      message: 'فيها سجدة',
+      child: SizedBox(
+        width: 22,
+        height: 40,
+        child: Center(
+          // The glyph sits a bit high inside its text box, so move it down
+          // to the real center.
+          child: Transform.translate(
+            offset: const Offset(0.4, -4),
+            child: Text(
+              '\uE311',
+              style: TextStyle(
+                fontFamily: 'QuranSignsAmiri',
+                color: colors.accent,
+                fontSize: 30,
+                height: 1.3,
+              ),
             ),
           ),
         ),
