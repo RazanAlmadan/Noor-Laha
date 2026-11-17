@@ -22,3 +22,15 @@ const List<String> kDedications = [
 const String kDeceasedName = 'ريم مرتضى الشبر';
 // Full wording of the name on the opening page.
 const String kDedicationName = 'السيدة ريم مرتضى آل شبر';
+
+// Index of today's dua. It changes at midnight (phone's local date) and walks
+// through the whole list before repeating.
+int todaysDedicationIndex() {
+  final DateTime now = DateTime.now();
+  // DateTime.utc on the local Y/M/D counts calendar days only, so a daylight
+  // saving change can never shift the result.
+  final int days = DateTime.utc(now.year, now.month, now.day)
+      .difference(DateTime.utc(2026, 1, 1))
+      .inDays;
+  return days % kDedications.length;
+}

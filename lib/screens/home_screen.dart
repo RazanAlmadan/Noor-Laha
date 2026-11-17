@@ -1,6 +1,7 @@
 import 'dart:math'; // Random
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Used to set the status bar icon colors
+import 'package:flutter/services.dart';
+import '../core/tasbih_icon.dart';// Used to set the status bar icon colors
 import '../core/app_colors.dart';
 import '../core/dedications.dart';
 import '../core/arabic_text.dart';
@@ -117,9 +118,9 @@ class HomeScreen extends StatelessWidget {
                           children: [
                             Expanded(
                               child: _SmallFeatureCard(
-                                title: 'التلاوات',
-                                subtitle: 'استمع لتلاوات مختارة',
-                                icon: Icons.headphones_rounded,
+                                title: 'المسبحة',
+                                subtitle: 'تسبيح الزهراء ومسابحك الخاصة',
+                                customIcon: const TasbihIcon(),
                                 onTap: () => onOpenTab(2),
                               ),
                             ),
@@ -562,13 +563,15 @@ class _DailyWirdCard extends StatelessWidget {
 class _SmallFeatureCard extends StatelessWidget {
   final String title;
   final String subtitle;
-  final IconData icon;
+  final IconData? icon;
+  final Widget? customIcon; // Used instead of [icon] when it is given.
   final VoidCallback onTap;
 
   const _SmallFeatureCard({
     required this.title,
     required this.subtitle,
-    required this.icon,
+    this.icon,
+    this.customIcon,
     required this.onTap,
   });
 
@@ -596,7 +599,13 @@ class _SmallFeatureCard extends StatelessWidget {
                   color: colors.softSurface,
                   borderRadius: BorderRadius.circular(15),
                 ),
-                child: Icon(icon, color: colors.accent, size: 25),
+                alignment: Alignment.center,
+                child: customIcon == null
+                    ? Icon(icon, color: colors.accent, size: 25)
+                    : IconTheme(
+                  data: IconThemeData(color: colors.accent, size: 28),
+                  child: customIcon!,
+                ),
               ),
               const SizedBox(height: 12),
               Text(
@@ -637,10 +646,10 @@ class _DedicationCard extends StatefulWidget {
 }
 
 class _DedicationCardState extends State<_DedicationCard> {
-  // Start from a random dua each time the app opens.
-  late int _index = Random().nextInt(kDedications.length);
+  // Start from today's dua: a new one every day, no repeats until the end.
+  late int _index = todaysDedicationIndex();
 
-  // Controls the swipeable pages. It starts at the random dua above.
+  // Controls the swipeable pages. It starts at today's dua.
   late final PageController _controller = PageController(initialPage: _index);
 
   @override
