@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Used to set the status bar icon colors
 import '../core/app_colors.dart';
 import '../core/dedications.dart';
+import '../core/arabic_text.dart';
+import '../core/saved_items.dart';
+import '../data/quran_data.dart';
+import 'reader_screen.dart';
 import 'favorites_screen.dart';
 
 // Hero image height, not counting the status bar. Increase it for a taller image.
@@ -91,13 +95,8 @@ class HomeScreen extends StatelessWidget {
                     // stretch makes every card take the full width.
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Continue reading card (static values for now,
-                      // we will connect it to the real reading position later).
-                      _ContinueReadingCard(
-                        surahName: 'سورة البقرة',
-                        ayahText: 'الآية 25',
-                        onTap: () => onOpenTab(1),
-                      ),
+                      // Continue reading card: uses the saved reading position.
+                      _ContinueReading(onOpenTab: onOpenTab),
 
                       const SizedBox(height: 14),
 
@@ -411,6 +410,56 @@ class _ContinueReadingCard extends StatelessWidget {
   }
 }
 
+// "Continue reading" card connected to the saved reading position.
+class _ContinueReading extends StatelessWidget {
+  final ValueChanged<int> onOpenTab;
+
+  const _ContinueReading({required this.onOpenTab});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<QuranData>(
+      future: QuranRepository.instance.load(),
+      builder: (context, snapshot) {
+        final QuranData? data = snapshot.data;
+
+        // While the Quran data loads, the card just opens the Quran tab.
+        if (data == null) {
+          return _ContinueReadingCard(
+            surahName: 'المصحف الشريف',
+            ayahText: 'ابدأ القراءة',
+            onTap: () => onOpenTab(1),
+          );
+        }
+
+        return ValueListenableBuilder<LastRead?>(
+          valueListenable: lastReadNotifier,
+          builder: (context, last, _) {
+            // Before the first reading we point to the start of the Quran.
+            final AyahRef ref = last?.ref ?? const AyahRef(1, 1);
+            final int page = last?.page ?? 1;
+            final Surah surah = data.surahs[ref.surah - 1];
+
+            return _ContinueReadingCard(
+              surahName: 'سورة ${surah.name}',
+              ayahText: last == null
+                  ? 'ابدأ القراءة من البداية'
+                  : 'الآية ${toArabicDigits(ref.ayah)} · صفحة ${toArabicDigits(page)}',
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ReaderScreen(data: data, initialPage: page),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
 // Daily wird card with a progress bar.
 class _DailyWirdCard extends StatelessWidget {
   final int completedJuz;
@@ -627,6 +676,16 @@ class _DedicationCardState extends State<_DedicationCard> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Light: cream fading to a soft lavender. Dark: the same idea, but we
+    // lift the top corner with a purple tint, so it is visible on dark colors.
+    final List<Color> gradientColors = isDark
+        ? [
+      Color.lerp(colors.softSurface, colors.accentStrongStart, 0.3)!,
+      colors.card,
+    ]
+        : [colors.card, colors.softSurface.withValues(alpha: 0.6)];
 
     return Container(
       decoration: BoxDecoration(
@@ -634,7 +693,7 @@ class _DedicationCardState extends State<_DedicationCard> {
         gradient: LinearGradient(
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
-          colors: [colors.card, colors.softSurface.withValues(alpha: 0.6)],
+          colors: gradientColors,
         ),
         border: Border.all(color: colors.border.withValues(alpha: 0.8)),
         boxShadow: [
@@ -651,27 +710,23 @@ class _DedicationCardState extends State<_DedicationCard> {
         child: Stack(
           children: [
             // Faint plant branch watermark in the bottom-left corner.
-            // It is bigger than before and sits higher, so the buttons
-            // do not cover it. A negative `end` lets it peek out of the edge.
+            // Its size matches the shorter card, so it is not cut at the top.
             PositionedDirectional(
-              end: -6,
-              bottom: 36,
+              end: -4,
+              bottom: 38,
               child: CustomPaint(
-                size: const Size(130, 190),
+                size: const Size(100, 135),
                 painter: _BranchPainter(color: colors.accent),
               ),
             ),
-
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
               child: Column(
                 children: [
-                  const _QuoteDivider(isOpening: true),
-
-                  // Fixed height for the swipeable duas.
+                  // Fixed height for the swipeable duas (up to 3 lines).
                   // Increase it if you add a long dua that needs 4 lines.
                   SizedBox(
-                    height: 124,
+                    height: 112,
                     child: PageView.builder(
                       controller: _controller,
                       itemCount: kDedications.length,
@@ -687,7 +742,7 @@ class _DedicationCardState extends State<_DedicationCard> {
                                 color: colors.title,
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
-                                height: 1.9,
+                                height: 1.8,
                               ),
                             ),
                           ),
@@ -696,11 +751,9 @@ class _DedicationCardState extends State<_DedicationCard> {
                     ),
                   ),
 
-                  const _QuoteDivider(isOpening: false),
+                  const SizedBox(height: 8),
 
-                  const SizedBox(height: 10),
-
-                  // Copy button (right), page dots (center), next button (left).
+                  // Copy button (right), counter (center), next button (left).
                   Row(
                     children: [
                       _SoftIconButton(
@@ -709,7 +762,15 @@ class _DedicationCardState extends State<_DedicationCard> {
                         onTap: _copy,
                       ),
                       const Spacer(),
-                      _PageDots(count: kDedications.length, index: _index),
+                      Text(
+                        '${toArabicDigits(_index + 1)} / '
+                            '${toArabicDigits(kDedications.length)}',
+                        style: TextStyle(
+                          color: colors.mutedText,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const Spacer(),
                       _SoftIconButton(
                         icon: Icons.autorenew_rounded,
@@ -728,36 +789,6 @@ class _DedicationCardState extends State<_DedicationCard> {
   }
 }
 
-// Thin line with a quote mark in the middle (opening or closing).
-class _QuoteDivider extends StatelessWidget {
-  final bool isOpening;
-
-  const _QuoteDivider({required this.isOpening});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-
-    return Row(
-      children: [
-        Expanded(child: Container(height: 1, color: colors.border)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Transform.rotate(
-            // The closing mark is the opening mark turned upside down.
-            angle: isOpening ? 0 : pi,
-            child: Icon(
-              Icons.format_quote_rounded,
-              color: colors.accent,
-              size: 26,
-            ),
-          ),
-        ),
-        Expanded(child: Container(height: 1, color: colors.border)),
-      ],
-    );
-  }
-}
 
 // Small rounded icon button used inside the dedication card.
 class _SoftIconButton extends StatelessWidget {
@@ -794,36 +825,6 @@ class _SoftIconButton extends StatelessWidget {
   }
 }
 
-// Row of dots that shows which dua is selected.
-class _PageDots extends StatelessWidget {
-  final int count;
-  final int index;
-
-  const _PageDots({required this.count, required this.index});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.colors;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(count, (i) {
-        final bool active = i == index;
-        // AnimatedContainer smoothly grows the active dot.
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          margin: const EdgeInsets.symmetric(horizontal: 3),
-          width: active ? 20 : 7,
-          height: 7,
-          decoration: BoxDecoration(
-            color: active ? colors.accent : colors.border,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        );
-      }),
-    );
-  }
-}
 
 // Draws a soft plant branch: a curved stem with leaves on both sides.
 // It is drawn with code, so it follows the theme color (light and dark).

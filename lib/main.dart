@@ -3,8 +3,11 @@ import 'package:flutter/services.dart';
 
 import 'core/app_colors.dart';
 import 'core/app_theme.dart';
+import 'core/saved_items.dart';
 import 'core/theme_controller.dart';
 import 'core/reader_settings.dart';
+import 'core/dedication_state.dart';
+import 'screens/dedication_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/more_screen.dart';
 import 'screens/quran_screen.dart';
@@ -15,12 +18,19 @@ Future<void> main() async {
   // Needed because we use plugins before runApp.
   WidgetsFlutterBinding.ensureInitialized();
   await loadReaderSettings();
-  runApp(const NoorLahaApp());
+  await loadSavedItems();
+  await loadThemeMode();
+
+  // The dedication page shows once a day.
+  final bool showDedication = await shouldShowDedication();
+  runApp(NoorLahaApp(showDedication: showDedication));
 }
 
 // Root widget of the application.
 class NoorLahaApp extends StatelessWidget {
-  const NoorLahaApp({super.key});
+  final bool showDedication;
+
+  const NoorLahaApp({super.key, required this.showDedication});
 
   @override
   Widget build(BuildContext context) {
@@ -58,9 +68,42 @@ class NoorLahaApp extends StatelessWidget {
             );
           },
 
-          home: const AppShell(),
+          home: AppRoot(showDedication: showDedication),
         );
       },
+    );
+  }
+}
+
+// Shows the dedication page first (once a day), then fades into the app.
+class AppRoot extends StatefulWidget {
+  final bool showDedication;
+
+  const AppRoot({super.key, required this.showDedication});
+
+  @override
+  State<AppRoot> createState() => _AppRootState();
+}
+
+class _AppRootState extends State<AppRoot> {
+  late bool _showDedication = widget.showDedication;
+
+  // Remember today, then fade into the app.
+  void _finish() {
+    markDedicationShown();
+    setState(() => _showDedication = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 600),
+      child: _showDedication
+          ? DedicationScreen(
+        key: const ValueKey('dedication'),
+        onContinue: _finish,
+      )
+          : const AppShell(key: ValueKey('shell')),
     );
   }
 }

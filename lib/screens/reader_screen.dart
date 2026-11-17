@@ -10,6 +10,7 @@ import '../core/app_colors.dart';
 import '../core/arabic_text.dart';
 import '../core/reader_settings.dart';
 import '../data/quran_data.dart';
+import '../core/saved_items.dart';
 
 // Quran reader. The user chooses between swiping pages or scrolling.
 class ReaderScreen extends StatefulWidget {
@@ -30,9 +31,40 @@ class _ReaderScreenState extends State<ReaderScreen> {
   // The page the user is on. It survives switching the view mode.
   late int _page = widget.initialPage;
 
+  // Highlighted ayahs: the ayah of the open sheet, or the ayahs chosen in
+  // selection mode. Pages listen to it.
+  final ValueNotifier<Set<AyahRef>> _selection =
+  ValueNotifier<Set<AyahRef>>(<AyahRef>{});
+
+  // True while the user is choosing several ayahs.
+  bool _selectMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Save the first page as the last read position. We wait for the first
+    // frame because saving notifies other screens (like the home card).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _saveLastRead(_page);
+    });
+  }
+
+  @override
+  void dispose() {
+    _selection.dispose();
+    super.dispose();
+  }
+
+  // The last read position is the first ayah of the current page.
+  void _saveLastRead(int page) {
+    final AyahRef first = widget.data.ayahsOfPage(page).first;
+    setLastRead(LastRead(first, page));
+  }
+
   void _onPageChanged(int page) {
     if (page == _page) return;
     setState(() => _page = page);
+    _saveLastRead(page);
   }
 
   void _openSettings() {
@@ -44,6 +76,108 @@ class _ReaderScreenState extends State<ReaderScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => const _ReaderSettingsSheet(),
+    );
+  }
+
+  // ---------- Selection mode ----------
+
+  void _enterSelectMode(AyahRef first) {
+    setState(() => _selectMode = true);
+    _selection.value = {first};
+  }
+
+  void _exitSelectMode() {
+    setState(() => _selectMode = false);
+    _selection.value = <AyahRef>{};
+  }
+
+  // Adds the ayah to the selection, or removes it if it is already selected.
+  void _toggleSelected(AyahRef ref) {
+    final Set<AyahRef> next = {..._selection.value};
+    if (!next.remove(ref)) next.add(ref);
+
+    if (next.isEmpty) {
+      _exitSelectMode();
+    } else {
+      _selection.value = next;
+    }
+  }
+
+  // A tap opens the ayah sheet, or selects the ayah in selection mode.
+  void _onTapAyah(AyahRef ref) {
+    if (_selectMode) {
+      _toggleSelected(ref);
+    } else {
+      _openAyahSheet(ref);
+    }
+  }
+
+  // A long press starts selecting several ayahs.
+  void _onLongPressAyah(AyahRef ref) {
+    HapticFeedback.mediumImpact();
+    if (_selectMode) {
+      _toggleSelected(ref);
+    } else {
+      _enterSelectMode(ref);
+    }
+  }
+
+  Future<void> _openAyahSheet(AyahRef ref) async {
+    _selection.value = {ref};
+
+    // The sheet returns true when the user chose "select several ayahs".
+    final bool? selectMore = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.8,
+      ),
+      backgroundColor: context.colors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _AyahSheet(data: widget.data, ref: ref),
+    );
+
+    // The screen may have been closed while the sheet was open.
+    if (!mounted) return;
+
+    if (selectMore == true) {
+      setState(() => _selectMode = true); // the ayah stays selected
+    } else {
+      _selection.value = <AyahRef>{};
+    }
+  }
+
+  Future<void> _copySelection() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final Set<AyahRef> chosen = _selection.value;
+    final String text = _copyTextFor(widget.data, chosen);
+    final bool many = chosen.length > 1;
+
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+
+    _exitSelectMode();
+    messenger.showSnackBar(_snack(many ? 'تم نسخ الآيات' : 'تم نسخ الآية'));
+  }
+
+  // Adds a bookmark to all selected ayahs, or removes them if all have one.
+  Future<void> _bookmarkSelection() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final Set<AyahRef> chosen = _selection.value;
+    final bool allMarked = chosen.every(isBookmarked);
+
+    if (allMarked) {
+      await removeBookmarks(chosen);
+    } else {
+      await addBookmarks(chosen);
+    }
+    if (!mounted) return;
+
+    _exitSelectMode();
+    messenger.showSnackBar(
+      _snack(allMarked ? 'أُزيلت العلامة المرجعية' : 'تمت إضافة علامة مرجعية'),
     );
   }
 
@@ -63,59 +197,123 @@ class _ReaderScreenState extends State<ReaderScreen> {
       'صفحة ${toArabicDigits(_page)}',
     ].join(' · ');
 
-    return Scaffold(
-      backgroundColor: colors.background,
-      appBar: AppBar(
+    return PopScope(
+      // In selection mode the back button only closes the selection.
+      canPop: !_selectMode,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _exitSelectMode();
+      },
+      child: Scaffold(
         backgroundColor: colors.background,
-        foregroundColor: colors.title,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: true,
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'سورة ${surah.name}',
-              style: TextStyle(
-                color: colors.title,
-                fontWeight: FontWeight.bold,
-                fontSize: 19,
+        appBar: AppBar(
+          backgroundColor: colors.background,
+          foregroundColor: colors.title,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          centerTitle: true,
+          // null keeps the normal back button.
+          leading: _selectMode
+              ? IconButton(
+            tooltip: 'إلغاء التحديد',
+            icon: const Icon(Icons.close_rounded),
+            onPressed: _exitSelectMode,
+          )
+              : null,
+          title: _selectMode
+              ? ValueListenableBuilder<Set<AyahRef>>(
+            valueListenable: _selection,
+            builder: (context, chosen, _) {
+              return Text(
+                '${toArabicDigits(chosen.length)} '
+                    '${chosen.length == 1 ? 'آية' : 'آيات'} محددة',
+                style: TextStyle(
+                  color: colors.title,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              );
+            },
+          )
+              : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'سورة ${surah.name}',
+                style: TextStyle(
+                  color: colors.title,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 19,
+                ),
               ),
+              Text(
+                info,
+                style: TextStyle(color: colors.mutedText, fontSize: 12),
+              ),
+            ],
+          ),
+          actions: _selectMode
+              ? const []
+              : [
+            // Favorite button for the surah on the current page.
+            ValueListenableBuilder<Set<int>>(
+              valueListenable: favoriteSurahsNotifier,
+              builder: (context, favorites, _) {
+                final bool isFavorite = favorites.contains(surah.number);
+                return IconButton(
+                  tooltip: isFavorite
+                      ? 'إزالة السورة من المفضلة'
+                      : 'إضافة السورة للمفضلة',
+                  icon: Icon(
+                    isFavorite
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_border_rounded,
+                    color: isFavorite ? colors.accent : null,
+                  ),
+                  onPressed: () => toggleFavoriteSurah(surah.number),
+                );
+              },
             ),
-            Text(
-              info,
-              style: TextStyle(color: colors.mutedText, fontSize: 12),
+            IconButton(
+              tooltip: 'إعدادات القراءة',
+              icon: const Icon(Icons.tune_rounded),
+              onPressed: _openSettings,
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            tooltip: 'إعدادات القراءة',
-            icon: const Icon(Icons.tune_rounded),
-            onPressed: _openSettings,
+        // The scope gives the pages the selection and the tap actions.
+        body: _ReaderScope(
+          selection: _selection,
+          onTapAyah: _onTapAyah,
+          onLongPressAyah: _onLongPressAyah,
+          // The keys make Flutter rebuild the body from the current page
+          // when the user switches the view mode.
+          child: ValueListenableBuilder<ReaderViewMode>(
+            valueListenable: readerViewModeNotifier,
+            builder: (context, mode, _) {
+              if (mode == ReaderViewMode.pages) {
+                return _PagedBody(
+                  key: const ValueKey('pages'),
+                  data: widget.data,
+                  initialPage: _page,
+                  onPageChanged: _onPageChanged,
+                );
+              }
+              return _ScrollBody(
+                key: const ValueKey('scroll'),
+                data: widget.data,
+                initialPage: _page,
+                onPageChanged: _onPageChanged,
+              );
+            },
           ),
-        ],
-      ),
-      // The keys make Flutter rebuild the body from the current page
-      // when the user switches the view mode.
-      body: ValueListenableBuilder<ReaderViewMode>(
-        valueListenable: readerViewModeNotifier,
-        builder: (context, mode, _) {
-          if (mode == ReaderViewMode.pages) {
-            return _PagedBody(
-              key: const ValueKey('pages'),
-              data: widget.data,
-              initialPage: _page,
-              onPageChanged: _onPageChanged,
-            );
-          }
-          return _ScrollBody(
-            key: const ValueKey('scroll'),
-            data: widget.data,
-            initialPage: _page,
-            onPageChanged: _onPageChanged,
-          );
-        },
+        ),
+        bottomNavigationBar: _selectMode
+            ? _SelectionBar(
+          selection: _selection,
+          onCopy: _copySelection,
+          onBookmark: _bookmarkSelection,
+        )
+            : null,
       ),
     );
   }
@@ -266,25 +464,12 @@ class _MushafPage extends StatefulWidget {
 }
 
 class _MushafPageState extends State<_MushafPage> {
-  // One tap recognizer per ayah. They must be disposed with the page.
-  final Map<AyahRef, TapGestureRecognizer> _recognizers = {};
-
-  // The ayah that is highlighted while its sheet is open.
-  AyahRef? _selected;
-
   late final List<_PageBlock> _blocks = _buildBlocks();
 
   // Ayahs where a new quarter of a hizb begins (used for the ۞ sign).
   // The first quarter is the start of the Quran itself, so it gets no sign.
-  late final Set<AyahRef> _quarterStarts = widget.data.quarterStarts.skip(1).toSet();
-
-  @override
-  void dispose() {
-    for (final TapGestureRecognizer r in _recognizers.values) {
-      r.dispose();
-    }
-    super.dispose();
-  }
+  late final Set<AyahRef> _quarterStarts =
+  widget.data.quarterStarts.skip(1).toSet();
 
   // Groups the page ayahs by surah, because a surah header can sit in between.
   List<_PageBlock> _buildBlocks() {
@@ -298,46 +483,24 @@ class _MushafPageState extends State<_MushafPage> {
     return blocks;
   }
 
-  TapGestureRecognizer _recognizerFor(AyahRef ref) {
-    return _recognizers.putIfAbsent(
-      ref,
-          () => TapGestureRecognizer()..onTap = () => _onTapAyah(ref),
-    );
-  }
-
-  Future<void> _onTapAyah(AyahRef ref) async {
-    setState(() => _selected = ref);
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.8,
-      ),
-      backgroundColor: context.colors.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => _AyahSheet(data: widget.data, ref: ref),
-    );
-
-    // The page may have been removed while the sheet was open.
-    if (!mounted) return;
-    setState(() => _selected = null);
-  }
-
   // Builds the flowing text of one surah block on this page.
+  // [selected] are the highlighted ayahs, [marked] the bookmarked ones.
   Widget _buildAyahText(
       _PageBlock block,
       double fontSize,
       String family,
       AppPalette colors,
+      Set<AyahRef> selected,
+      Set<AyahRef> marked,
+      _ReaderScope scope,
       ) {
     final Surah surah = widget.data.surahs[block.surah - 1];
     final List<TextSpan> spans = [];
     final List<TextRange> lineRanges = [];
+    final List<_AyahRange> ayahRanges = [];
 
-    // Length of the text so far. The sajda line needs exact positions.
+    // Length of the text so far. The sajda line and the taps need exact
+    // positions inside the text.
     int offset = 0;
     void add(TextSpan span) {
       spans.add(span);
@@ -346,9 +509,15 @@ class _MushafPageState extends State<_MushafPage> {
 
     for (final int n in block.ayahs) {
       final AyahRef ref = AyahRef(block.surah, n);
-      final TapGestureRecognizer tap = _recognizerFor(ref);
-      final Color? highlight =
-      _selected == ref ? colors.accent.withValues(alpha: 0.18) : null;
+      final int ayahStart = offset;
+      final bool isMarked = marked.contains(ref);
+
+      // A selected ayah has a stronger highlight than a bookmarked one.
+      final Color? highlight = selected.contains(ref)
+          ? colors.accent.withValues(alpha: 0.18)
+          : isMarked
+          ? colors.accent.withValues(alpha: 0.08)
+          : null;
       final TextStyle base = TextStyle(backgroundColor: highlight);
       final String ayahText = surah.ayahs[n - 1];
 
@@ -357,11 +526,10 @@ class _MushafPageState extends State<_MushafPage> {
         add(
           TextSpan(
             text: _kHizbSign,
-            recognizer: tap,
             style: _signStyle(family, fontSize, colors.accent, highlight),
           ),
         );
-        add(TextSpan(text: ' ', recognizer: tap, style: base));
+        add(TextSpan(text: ' ', style: base));
       }
 
       // The ayah words, with the signs drawn by the sign font.
@@ -370,7 +538,6 @@ class _MushafPageState extends State<_MushafPage> {
         fontSize: fontSize,
         family: family,
         signColor: colors.accent,
-        recognizer: tap,
         highlight: highlight,
         startOffset: offset,
         lineWords: _kSajdaLines['${block.surah}:$n'],
@@ -382,13 +549,12 @@ class _MushafPageState extends State<_MushafPage> {
 
       // U+200F (RLM) keeps the sign and the ayah number as separate runs,
       // so they can never swap places.
-      add(TextSpan(text: ' \u200F', recognizer: tap, style: base));
+      add(TextSpan(text: ' \u200F', style: base));
 
       // The ayah number is a glyph from our AyahMarker font (U+E000 + number).
       add(
         TextSpan(
           text: String.fromCharCode(0xE000 + n),
-          recognizer: tap,
           style: TextStyle(
             fontFamily: 'AyahMarker',
             fontSize: fontSize,
@@ -399,6 +565,8 @@ class _MushafPageState extends State<_MushafPage> {
         ),
       );
       add(const TextSpan(text: ' \u200F'));
+
+      ayahRanges.add(_AyahRange(ayahStart, offset, ref));
     }
 
     return _LinedText(
@@ -414,6 +582,9 @@ class _MushafPageState extends State<_MushafPage> {
       fontSize: fontSize,
       // Share of the line box that is above the baseline (depends on the font).
       ascentRatio: family == 'ScheherazadeNew' ? 0.658 : 0.741,
+      ayahRanges: ayahRanges,
+      onTapAyah: scope.onTapAyah,
+      onLongPressAyah: scope.onLongPressAyah,
     );
   }
 
@@ -424,6 +595,9 @@ class _MushafPageState extends State<_MushafPage> {
       double fontSize,
       String family,
       AppPalette colors,
+      Set<AyahRef> selected,
+      Set<AyahRef> marked,
+      _ReaderScope scope,
       ) {
     final Surah surah = widget.data.surahs[block.surah - 1];
 
@@ -444,7 +618,15 @@ class _MushafPageState extends State<_MushafPage> {
             fontSize: fontSize,
             fontFamily: family,
           ),
-        _buildAyahText(block, fontSize, family, colors),
+        _buildAyahText(
+          block,
+          fontSize,
+          family,
+          colors,
+          selected,
+          marked,
+          scope,
+        ),
       ],
     );
   }
@@ -452,13 +634,21 @@ class _MushafPageState extends State<_MushafPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final _ReaderScope scope = _ReaderScope.of(context);
 
-    // Rebuild when the font size or the font changes.
+    // Rebuild when the font, the selection or the bookmarks change.
     return ListenableBuilder(
-      listenable: Listenable.merge([readerFontSizeNotifier, readerFontNotifier]),
+      listenable: Listenable.merge([
+        readerFontSizeNotifier,
+        readerFontNotifier,
+        scope.selection,
+        bookmarksNotifier,
+      ]),
       builder: (context, _) {
         final double fontSize = readerFontSizeNotifier.value;
         final String family = fontFamilyOf(readerFontNotifier.value);
+        final Set<AyahRef> selected = scope.selection.value;
+        final Set<AyahRef> marked = bookmarksNotifier.value.toSet();
 
         // One box for the whole page.
         final Widget box = _AyahBox(
@@ -467,7 +657,16 @@ class _MushafPageState extends State<_MushafPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (int i = 0; i < _blocks.length; i++)
-                _buildBlock(_blocks[i], i == 0, fontSize, family, colors),
+                _buildBlock(
+                  _blocks[i],
+                  i == 0,
+                  fontSize,
+                  family,
+                  colors,
+                  selected,
+                  marked,
+                  scope,
+                ),
             ],
           ),
         );
@@ -502,6 +701,222 @@ class _MushafPageState extends State<_MushafPage> {
             ? SingleChildScrollView(padding: padding, child: content)
             : Padding(padding: padding, child: content);
       },
+    );
+  }
+}
+
+
+// Where one ayah starts and ends inside the page text (used to find the
+// ayah that was tapped).
+class _AyahRange {
+  final int start;
+  final int end;
+  final AyahRef ref;
+
+  const _AyahRange(this.start, this.end, this.ref);
+}
+
+// Gives the pages the selection and the tap actions, so we do not have to pass
+// them through every widget.
+class _ReaderScope extends InheritedWidget {
+  final ValueNotifier<Set<AyahRef>> selection;
+  final void Function(AyahRef) onTapAyah;
+  final void Function(AyahRef) onLongPressAyah;
+
+  const _ReaderScope({
+    required this.selection,
+    required this.onTapAyah,
+    required this.onLongPressAyah,
+    required super.child,
+  });
+
+  static _ReaderScope of(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<_ReaderScope>()!;
+  }
+
+  // The notifier and the actions never change, so nothing needs rebuilding.
+  @override
+  bool updateShouldNotify(_ReaderScope oldWidget) => false;
+}
+
+SnackBar _snack(String message) {
+  return SnackBar(
+    content: Text(message),
+    behavior: SnackBarBehavior.floating,
+    duration: const Duration(seconds: 2),
+  );
+}
+
+// Text to copy for one or more ayahs, in Quran order.
+// Each surah gets its own group with a line under it.
+String _copyTextFor(QuranData data, Iterable<AyahRef> refs) {
+  final List<AyahRef> sorted = refs.toList()
+    ..sort((a, b) {
+      return a.surah != b.surah
+          ? a.surah.compareTo(b.surah)
+          : a.ayah.compareTo(b.ayah);
+    });
+
+  final StringBuffer out = StringBuffer();
+  int i = 0;
+  while (i < sorted.length) {
+    final int surahNumber = sorted[i].surah;
+    final List<int> numbers = [];
+    while (i < sorted.length && sorted[i].surah == surahNumber) {
+      numbers.add(sorted[i].ayah);
+      i++;
+    }
+
+    final Surah surah = data.surahs[surahNumber - 1];
+    if (out.isNotEmpty) out.write('\n\n');
+
+    out.write(
+      numbers
+          .map((n) => '${surah.ayahs[n - 1]} ﴿${toArabicDigits(n)}﴾')
+          .join(' '),
+    );
+    out.write(
+      '\n— سورة ${surah.name} · '
+          '${numbers.length == 1 ? 'الآية' : 'الآيات'} '
+          '${_ayahNumbersLabel(numbers)}',
+    );
+  }
+  return out.toString();
+}
+
+// Writes sorted ayah numbers as short ranges: [3, 4, 5, 9] -> "٣–٥، ٩".
+String _ayahNumbersLabel(List<int> numbers) {
+  final List<String> parts = [];
+  int start = numbers.first;
+  int previous = start;
+
+  void close() {
+    parts.add(
+      start == previous
+          ? toArabicDigits(start)
+          : '${toArabicDigits(start)}–${toArabicDigits(previous)}',
+    );
+  }
+
+  for (int k = 1; k < numbers.length; k++) {
+    if (numbers[k] == previous + 1) {
+      previous = numbers[k];
+    } else {
+      close();
+      start = numbers[k];
+      previous = start;
+    }
+  }
+  close();
+  return parts.join('، ');
+}
+
+// Ayah text with the pause / sajda signs drawn by our sign fonts.
+// Other screens (like favorites) use this to show an ayah correctly.
+List<TextSpan> quranAyahSpans(
+    String text, {
+      required double fontSize,
+      required String family,
+      required Color signColor,
+    }) {
+  return _ayahTextSpans(
+    text,
+    fontSize: fontSize,
+    family: family,
+    signColor: signColor,
+  );
+}
+
+// Bar at the bottom while the user is selecting several ayahs.
+class _SelectionBar extends StatelessWidget {
+  final ValueNotifier<Set<AyahRef>> selection;
+  final VoidCallback onCopy;
+  final VoidCallback onBookmark;
+
+  const _SelectionBar({
+    required this.selection,
+    required this.onCopy,
+    required this.onBookmark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return Material(
+      color: colors.card,
+      elevation: 8,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: ListenableBuilder(
+            listenable: Listenable.merge([selection, bookmarksNotifier]),
+            builder: (context, _) {
+              final Set<AyahRef> chosen = selection.value;
+              final bool allMarked =
+                  chosen.isNotEmpty && chosen.every(isBookmarked);
+
+              return Row(
+                children: [
+                  Expanded(
+                    child: _BarButton(
+                      icon: Icons.copy_rounded,
+                      label: 'نسخ',
+                      onTap: onCopy,
+                    ),
+                  ),
+                  Expanded(
+                    child: _BarButton(
+                      icon: allMarked
+                          ? Icons.bookmark_remove_rounded
+                          : Icons.bookmark_add_outlined,
+                      label: allMarked ? 'إزالة العلامة' : 'علامة مرجعية',
+                      onTap: onBookmark,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BarButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _BarButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: colors.accent, size: 24),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(color: colors.bodyText, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -657,7 +1072,8 @@ const Map<String, _WordRange> _kSajdaLines = {
 // How high above the baseline the sajda line is drawn (in font sizes).
 const double _kSajdaLineHeight = 1.25;
 
-// A text with an optional line drawn above some of its words.
+// A text with an optional line above some words, and ayah taps.
+// A tap or a long press is mapped to the ayah that sits at that position.
 class _LinedText extends StatefulWidget {
   final TextSpan span;
   final TextStyle style;
@@ -665,6 +1081,9 @@ class _LinedText extends StatefulWidget {
   final Color lineColor;
   final double fontSize;
   final double ascentRatio;
+  final List<_AyahRange> ayahRanges;
+  final void Function(AyahRef) onTapAyah;
+  final void Function(AyahRef) onLongPressAyah;
 
   const _LinedText({
     required this.span,
@@ -673,6 +1092,9 @@ class _LinedText extends StatefulWidget {
     required this.lineColor,
     required this.fontSize,
     required this.ascentRatio,
+    required this.ayahRanges,
+    required this.onTapAyah,
+    required this.onLongPressAyah,
   });
 
   @override
@@ -681,6 +1103,42 @@ class _LinedText extends StatefulWidget {
 
 class _LinedTextState extends State<_LinedText> {
   final GlobalKey _textKey = GlobalKey();
+
+  RenderParagraph? _findParagraph(RenderObject? object) {
+    if (object is RenderParagraph) return object;
+    RenderParagraph? found;
+    object?.visitChildren((child) {
+      found ??= _findParagraph(child);
+    });
+    return found;
+  }
+
+  // Finds the ayah under the finger and calls the matching action.
+  void _handle(Offset position, {required bool longPress}) {
+    if (widget.ayahRanges.isEmpty) return;
+
+    final RenderParagraph? paragraph =
+    _findParagraph(_textKey.currentContext?.findRenderObject());
+    if (paragraph == null) return;
+
+    final int offset = paragraph.getPositionForOffset(position).offset;
+
+    // The first ayah that ends after the tapped position. A tap after the
+    // last character counts for the last ayah.
+    _AyahRange hit = widget.ayahRanges.last;
+    for (final _AyahRange range in widget.ayahRanges) {
+      if (offset < range.end) {
+        hit = range;
+        break;
+      }
+    }
+
+    if (longPress) {
+      widget.onLongPressAyah(hit.ref);
+    } else {
+      widget.onTapAyah(hit.ref);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -692,9 +1150,9 @@ class _LinedTextState extends State<_LinedText> {
     );
 
     // Most pages have no sajda line, so they stay a plain Text.
-    if (widget.lineRanges.isEmpty) return text;
-
-    return Stack(
+    final Widget content = widget.lineRanges.isEmpty
+        ? text
+        : Stack(
       children: [
         text,
         Positioned.fill(
@@ -711,6 +1169,14 @@ class _LinedTextState extends State<_LinedText> {
           ),
         ),
       ],
+    );
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapUp: (details) => _handle(details.localPosition, longPress: false),
+      onLongPressStart: (details) =>
+          _handle(details.localPosition, longPress: true),
+      child: content,
     );
   }
 }
@@ -1085,8 +1551,8 @@ class _SoftDividerPainter extends CustomPainter {
   bool shouldRepaint(_SoftDividerPainter old) => old.line != line;
 }
 
-// Bottom sheet shown when an ayah is tapped. More actions come later
-// (favorite, last read, tafsir, audio).
+// Bottom sheet shown when an ayah is tapped. It returns true when the user
+// chose to select several ayahs. More actions come later (tafsir, audio).
 class _AyahSheet extends StatelessWidget {
   final QuranData data;
   final AyahRef ref;
@@ -1094,23 +1560,27 @@ class _AyahSheet extends StatelessWidget {
   const _AyahSheet({required this.data, required this.ref});
 
   Future<void> _copy(BuildContext context) async {
-    final Surah surah = data.surahs[ref.surah - 1];
-    final String text = '${surah.ayahs[ref.ayah - 1]} '
-        '﴿${toArabicDigits(ref.ayah)}﴾\n'
-        '— سورة ${surah.name}';
-
     // Capture these before the await so we do not use context after it.
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
 
-    await Clipboard.setData(ClipboardData(text: text));
-    navigator.pop();
+    await Clipboard.setData(ClipboardData(text: _copyTextFor(data, [ref])));
+    navigator.pop(false);
+    messenger.showSnackBar(_snack('تم نسخ الآية'));
+  }
+
+  Future<void> _toggleBookmark(BuildContext context, bool marked) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    if (marked) {
+      await removeBookmarks([ref]);
+    } else {
+      await addBookmarks([ref]);
+    }
+    navigator.pop(false);
     messenger.showSnackBar(
-      const SnackBar(
-        content: Text('تم نسخ الآية'),
-        behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 2),
-      ),
+      _snack(marked ? 'أُزيلت العلامة المرجعية' : 'تمت إضافة علامة مرجعية'),
     );
   }
 
@@ -1118,6 +1588,7 @@ class _AyahSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.colors;
     final Surah surah = data.surahs[ref.surah - 1];
+    final String family = fontFamilyOf(readerFontNotifier.value);
 
     return SafeArea(
       child: Padding(
@@ -1146,12 +1617,12 @@ class _AyahSheet extends StatelessWidget {
                         children: _ayahTextSpans(
                           surah.ayahs[ref.ayah - 1],
                           fontSize: 24,
-                          family: fontFamilyOf(readerFontNotifier.value),
+                          family: family,
                           signColor: colors.accent,
                         ),
                       ),
                       style: TextStyle(
-                        fontFamily: fontFamilyOf(readerFontNotifier.value),
+                        fontFamily: family,
                         fontSize: 24,
                         height: 2.0,
                         color: colors.bodyText,
@@ -1162,6 +1633,37 @@ class _AyahSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
+
+            // Bookmark: the text changes if this ayah already has one.
+            ValueListenableBuilder<List<AyahRef>>(
+              valueListenable: bookmarksNotifier,
+              builder: (context, marks, _) {
+                final bool marked = marks.contains(ref);
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    marked
+                        ? Icons.bookmark_remove_rounded
+                        : Icons.bookmark_add_outlined,
+                    color: colors.accent,
+                  ),
+                  title: Text(
+                    marked ? 'إزالة العلامة المرجعية' : 'علامة مرجعية',
+                    style: TextStyle(color: colors.bodyText),
+                  ),
+                  onTap: () => _toggleBookmark(context, marked),
+                );
+              },
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.checklist_rounded, color: colors.accent),
+              title: Text(
+                'تحديد عدة آيات',
+                style: TextStyle(color: colors.bodyText),
+              ),
+              onTap: () => Navigator.of(context).pop(true),
+            ),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.copy_rounded, color: colors.accent),

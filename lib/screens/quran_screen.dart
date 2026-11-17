@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/app_colors.dart';
 import '../core/arabic_text.dart';
+import '../core/saved_items.dart';
 import '../data/quran_data.dart';
 import 'reader_screen.dart';
 
@@ -153,7 +154,8 @@ class _QuranScreenState extends State<QuranScreen> {
   }
 }
 
-// One row in the surah list: number badge, name, and type + ayah count.
+// One row in the surah list: number badge, name, type + ayah count, and the
+// favorite heart. It shows a bookmark with a count if the surah has bookmarks.
 class _SurahTile extends StatelessWidget {
   final Surah surah;
   final VoidCallback onTap;
@@ -179,61 +181,117 @@ class _SurahTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: colors.border.withValues(alpha: 0.8)),
             ),
-            child: Row(
-              children: [
-                // Number badge (on the right in RTL).
-                Container(
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: colors.softSurface,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(
-                    toArabicDigits(surah.number),
-                    style: TextStyle(
-                      color: colors.accent,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
+            // Rebuilds only this row when favorites or bookmarks change.
+            child: ListenableBuilder(
+              listenable: Listenable.merge([
+                favoriteSurahsNotifier,
+                bookmarksNotifier,
+              ]),
+              builder: (context, _) {
+                final bool isFavorite =
+                favoriteSurahsNotifier.value.contains(surah.number);
+                final int bookmarkCount = bookmarkCountOfSurah(surah.number);
 
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'سورة ${surah.name}',
+                return Row(
+                  children: [
+                    // Number badge (on the right in RTL).
+                    Container(
+                      width: 44,
+                      height: 44,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: colors.softSurface,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        toArabicDigits(surah.number),
                         style: TextStyle(
-                          color: colors.title,
-                          fontSize: 18,
+                          color: colors.accent,
                           fontWeight: FontWeight.bold,
+                          fontSize: 15,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '$type · ${toArabicDigits(surah.ayahCount)} آية',
-                        style: TextStyle(color: colors.mutedText, fontSize: 13),
+                    ),
+                    const SizedBox(width: 14),
+
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'سورة ${surah.name}',
+                            style: TextStyle(
+                              color: colors.title,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  '$type · ${toArabicDigits(surah.ayahCount)} آية',
+                                  style: TextStyle(
+                                    color: colors.mutedText,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              // Bookmark icon + how many bookmarks in this surah.
+                              if (bookmarkCount > 0) ...[
+                                const SizedBox(width: 10),
+                                Icon(
+                                  Icons.bookmark_rounded,
+                                  size: 16,
+                                  color: colors.accent,
+                                ),
+                                const SizedBox(width: 2),
+                                Text(
+                                  toArabicDigits(bookmarkCount),
+                                  style: TextStyle(
+                                    color: colors.accent,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
                       ),
+                    ),
+
+                    // Sajda sign: centered in the card, with space from the arrow.
+                    if (surah.hasSajda) ...[
+                      const SizedBox(width: 8),
+                      const _SajdaMark(),
+                      const SizedBox(width: 4),
                     ],
-                  ),
-                ),
 
-                // Sajda sign: centered in the card, with space from the arrow.
-                if (surah.hasSajda) ...[
-                  const SizedBox(width: 8),
-                  const _SajdaMark(),
-                  const SizedBox(width: 12),
-                ],
+                    // Favorite heart.
+                    IconButton(
+                      tooltip: isFavorite
+                          ? 'إزالة من المفضلة'
+                          : 'إضافة للمفضلة',
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(
+                        isFavorite
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
+                        color: isFavorite ? colors.accent : colors.mutedText,
+                        size: 22,
+                      ),
+                      onPressed: () => toggleFavoriteSurah(surah.number),
+                    ),
 
-                Icon(
-                  Icons.chevron_left_rounded,
-                  color: colors.mutedText,
-                ),
-              ],
+                    Icon(
+                      Icons.chevron_left_rounded,
+                      color: colors.mutedText,
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
