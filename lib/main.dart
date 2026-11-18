@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'dart:async';
+
 import 'core/app_colors.dart';
 import 'core/app_theme.dart';
 import 'core/saved_items.dart';
@@ -9,12 +11,14 @@ import 'core/reader_settings.dart';
 import 'core/dedication_state.dart';
 import 'core/tasbih_data.dart';
 import 'core/tasbih_icon.dart';
+import 'core/wird_data.dart';
+import 'screens/wird_screen.dart';
 import 'screens/tasbih_screen.dart';
 import 'screens/dedication_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/more_screen.dart';
 import 'screens/quran_screen.dart';
-import 'screens/upcoming_screen.dart';
+
 
 
 Future<void> main() async {
@@ -24,6 +28,7 @@ Future<void> main() async {
   await loadSavedItems();
   await loadThemeMode();
   await loadTasbih();
+  await loadWird();
 
   // The dedication page shows once a day.
   final bool showDedication = await shouldShowDedication();
@@ -121,6 +126,24 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
+  @override
+  void initState() {
+    super.initState();
+    wirdNotifier.addListener(_checkWirdNotice);
+    // Wait for the first frame, so the dialog can be shown.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkWirdNotice());
+  }
+
+  @override
+  void dispose() {
+    wirdNotifier.removeListener(_checkWirdNotice);
+    super.dispose();
+  }
+
+  // Shows the "missed part of the wird" notice when there is one.
+  void _checkWirdNotice() {
+    if (mounted) unawaited(showWirdNoticeIfNeeded(context));
+  }
   int selectedIndex = 0;
 
   // Switch to the tab with the given index.
@@ -143,10 +166,7 @@ class _AppShellState extends State<AppShell> {
           HomeScreen(onOpenTab: openTab), // 0: Home
           const QuranScreen(), // 1: Quran
           const TasbihScreen(), // 2: Tasbih // 2: Recitations
-          const UpcomingScreen(
-            title: 'الورد اليومي',
-            icon: Icons.calendar_month_rounded,
-          ), // 3: Daily wird
+          const WirdScreen(), // 3: Daily wird // 3: Daily wird
           const MoreScreen(), // 4: More
         ],
       ),

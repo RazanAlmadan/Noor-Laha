@@ -1,6 +1,7 @@
 import 'dart:math'; // Random
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../core/wird_data.dart';
 import '../core/tasbih_icon.dart';// Used to set the status bar icon colors
 import '../core/app_colors.dart';
 import '../core/dedications.dart';
@@ -101,12 +102,8 @@ class HomeScreen extends StatelessWidget {
 
                       const SizedBox(height: 14),
 
-                      // Daily wird card with a progress bar.
-                      _DailyWirdCard(
-                        completedJuz: 5,
-                        totalJuz: 30,
-                        onTap: () => onOpenTab(3),
-                      ),
+                      // Daily wird card, connected to the real wird.
+                      _DailyWirdCard(onTap: () => onOpenTab(3)),
 
                       const SizedBox(height: 14),
 
@@ -461,100 +458,109 @@ class _ContinueReading extends StatelessWidget {
   }
 }
 
-// Daily wird card with a progress bar.
+// Daily wird card with a progress bar, connected to today's wird.
 class _DailyWirdCard extends StatelessWidget {
-  final int completedJuz;
-  final int totalJuz;
   final VoidCallback onTap;
 
-  const _DailyWirdCard({
-    required this.completedJuz,
-    required this.totalJuz,
-    required this.onTap,
-  });
+  const _DailyWirdCard({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
 
-    // Progress ratio between 0 and 1.
-    final double progress = completedJuz / totalJuz;
+    return ValueListenableBuilder<Wird?>(
+      valueListenable: wirdNotifier,
+      builder: (context, wird, _) {
+        // Progress of today's portion, between 0 and 1.
+        final double progress = wird == null ? 0 : wird.todayFraction;
 
-    return Material(
-      color: colors.card,
-      borderRadius: BorderRadius.circular(26),
-      elevation: 2,
-      shadowColor: colors.shadow,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(26),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: colors.softSurface,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  Icons.calendar_month_rounded,
-                  color: colors.accent,
-                  size: 26,
-                ),
-              ),
+        final String label;
+        if (wird == null) {
+          label = 'ابدأ وردك';
+        } else if (wird.isKhatmaComplete) {
+          label = 'تمّت الختمة';
+        } else {
+          label =
+          '${toArabicDigits(wird.doneCount)} من ${toArabicDigits(wird.dayCount)} صفحة';
+        }
 
-              const SizedBox(width: 14),
+        return Material(
+          color: colors.card,
+          borderRadius: BorderRadius.circular(26),
+          elevation: 2,
+          shadowColor: colors.shadow,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(26),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: colors.softSurface,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      Icons.calendar_month_rounded,
+                      color: colors.accent,
+                      size: 26,
+                    ),
+                  ),
 
-              Expanded(
-                child: Column(
-                  children: [
-                    // Title on the right, count on the left.
-                    Row(
+                  const SizedBox(width: 14),
+
+                  Expanded(
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: Text(
-                            'الورد اليومي',
-                            style: TextStyle(
-                              color: colors.title,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                        // Title on the right, count on the left.
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'الورد اليومي',
+                                style: TextStyle(
+                                  color: colors.title,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
-                          ),
+                            Text(
+                              label,
+                              style: TextStyle(
+                                color: colors.mutedText,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
                         ),
-                        Text(
-                          '$completedJuz من $totalJuz جزء',
-                          style: TextStyle(
-                            color: colors.mutedText,
-                            fontSize: 14,
+
+                        const SizedBox(height: 10),
+
+                        // Progress bar with rounded ends.
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 8,
+                            backgroundColor: colors.softSurface,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              colors.accent,
+                            ),
                           ),
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 10),
-
-                    // Progress bar with rounded ends.
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 8,
-                        backgroundColor: colors.softSurface,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          colors.accent,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

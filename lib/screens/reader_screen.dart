@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
+import 'dart:async';
+
+import '../core/wird_data.dart';
 import '../core/app_colors.dart';
 import '../core/arabic_text.dart';
 import '../core/reader_settings.dart';
@@ -31,6 +34,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
   // The page the user is on. It survives switching the view mode.
   late int _page = widget.initialPage;
 
+  // A page counts for the daily wird after the user stays on it this long.
+  // For quick testing, change it to 3 seconds.
+  static const Duration _wirdReadTime = Duration(seconds: 10);
+  Timer? _wirdTimer;
+
+  void _startWirdTimer(int page) {
+    _wirdTimer?.cancel();
+    _wirdTimer = Timer(_wirdReadTime, () => markWirdPageRead(page));
+  }
+
   // Highlighted ayahs: the ayah of the open sheet, or the ayahs chosen in
   // selection mode. Pages listen to it.
   final ValueNotifier<Set<AyahRef>> _selection =
@@ -45,12 +58,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
     // Save the first page as the last read position. We wait for the first
     // frame because saving notifies other screens (like the home card).
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _saveLastRead(_page);
+      if (mounted) {
+        _saveLastRead(_page);
+        _startWirdTimer(_page);
+      }
     });
   }
 
   @override
   void dispose() {
+    _wirdTimer?.cancel();
     _selection.dispose();
     super.dispose();
   }
@@ -65,6 +82,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (page == _page) return;
     setState(() => _page = page);
     _saveLastRead(page);
+    _startWirdTimer(page);
   }
 
   void _openSettings() {
