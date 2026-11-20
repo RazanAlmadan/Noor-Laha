@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/app_colors.dart';
+import '../core/app_settings.dart';
 
 // About screen.
 // NOTE: the wording below is a placeholder.
@@ -84,9 +85,87 @@ class AboutScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(height: 22),
+
+              const _CreditsCard(),
+
+              const SizedBox(height: 22),
+
+              // App version.
+              Text(
+                'الإصدار $kAppVersion',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colors.mutedText, fontSize: 13),
+              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+// Thanks and sources: required attribution for the Quran text and fonts.
+class _CreditsCard extends StatelessWidget {
+  const _CreditsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+
+    const List<(String, String)> items = [
+      (
+      'نص القرآن الكريم',
+      'مشروع Tanzil (tanzil.net)، الرسم العثماني، برخصة CC BY 3.0',
+      ),
+      (
+      'خط المصحف',
+      'Amiri Quran وScheherazade New، برخصة SIL OFL',
+      ),
+      (
+      'خط الواجهة',
+      'Tajawal، برخصة SIL OFL',
+      ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'الشكر والمصادر',
+            style: TextStyle(
+              color: colors.title,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          for (final (String title, String source) in items) ...[
+            const SizedBox(height: 14),
+            Text(
+              title,
+              style: TextStyle(
+                color: colors.bodyText,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              source,
+              style: TextStyle(
+                color: colors.mutedText,
+                fontSize: 13,
+                height: 1.6,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

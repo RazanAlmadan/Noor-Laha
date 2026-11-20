@@ -123,14 +123,14 @@ Future<void> showWirdNoticeIfNeeded(BuildContext context) async {
   if (wird.type == WirdType.khatma) {
     final int left = wird.daysLeft(now) ?? 0;
     text = left > 0
-        ? 'بقي من وردك السابق $missed. أعدنا حساب وردك، '
+        ? 'فاتك $missed. أعدنا حساب وردك، '
         'وباقي ${_daysText(left)} على نهاية الختمة، '
         'فورد اليوم $today ($range).'
-        : 'بقي من وردك السابق $missed. انتهت المدة التي حددتها، ويمكنك '
+        : 'فاتك $missed. انتهت المدة التي حددتها، ويمكنك '
         'إكمال الختمة بنفس الوتيرة، وورد اليوم $today ($range).';
   } else {
     final DateTime? end = wird.plannedEnd(now);
-    text = 'بقي من وردك السابق $missed. سنكمل من حيث توقفت، '
+    text = 'فاتك $missed. سنكمل من حيث توقفت، '
         'وورد اليوم $range'
         '${end == null ? '' : '، وصار موعد انتهاء الختمة المتوقع ${_formatDate(end)}'}.';
   }

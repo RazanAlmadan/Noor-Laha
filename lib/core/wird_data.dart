@@ -409,7 +409,14 @@ int _snappedToUnit(Wird wird, int startPos, int pages) {
       bestDistance = distance;
     }
   }
-  return best - startPos + 1;
+  final int snapped = best - startPos + 1;
+
+  // A portion that is shorter than needed by more than a couple of pages
+  // would push the finish date back. When the user is behind schedule, the
+  // exact number of pages is used instead of the unit.
+  const int tolerance = 2;
+  if (snapped < pages - tolerance) return pages;
+  return snapped;
 }
 
 // Moves the wird to today when a new day started. The new portion begins at
@@ -447,9 +454,11 @@ Wird _rolledToToday(Wird wird, DateTime now) {
   final int perDay =
   wird.type == WirdType.fixedPages ? wird.pagesPerDay : wird.dayCount;
   final int unreadOld = math.max(0, wird.dayCount - wird.done.length);
+  // wird.missedPages is what an earlier notice reported that the user did
+  // not close yet, so it is added instead of being overwritten.
   final int missed = math.min(
     kMushafPages - next,
-    unreadOld + skippedDays * math.max(1, perDay),
+    wird.missedPages + unreadOld + skippedDays * math.max(1, perDay),
   );
 
   final Wird moved = wird.copyWith(

@@ -4,10 +4,12 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import 'dart:async';
 
+import '../core/app_settings.dart';
 import '../core/wird_data.dart';
 import '../core/app_colors.dart';
 import '../core/arabic_text.dart';
@@ -55,6 +57,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void initState() {
     super.initState();
+    // Keep the screen on while reading, when the user turned it on.
+    keepScreenOnNotifier.addListener(_syncWakelock);
+    _syncWakelock();
     // Save the first page as the last read position. We wait for the first
     // frame because saving notifies other screens (like the home card).
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -70,6 +75,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _wirdTimer?.cancel();
     _selection.dispose();
     super.dispose();
+    keepScreenOnNotifier.removeListener(_syncWakelock);
+    // Let the screen sleep normally again when the reader closes.
+    unawaited(WakelockPlus.disable().catchError((Object _) {}));
+  }
+
+  // Applies the "keep screen on" setting to the device.
+  void _syncWakelock() {
+    unawaited(
+      WakelockPlus.toggle(enable: keepScreenOnNotifier.value)
+          .catchError((Object _) {}),
+    );
   }
 
   // The last read position is the first ayah of the current page.

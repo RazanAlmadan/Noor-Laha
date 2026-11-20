@@ -1,22 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../core/app_colors.dart';
+import '../core/app_settings.dart';
 import '../core/theme_controller.dart';
 import 'about_screen.dart';
 import 'favorites_screen.dart';
 
-// "More" tab: favorites, theme, settings and about.
+// "More" tab: favorites, theme, reading options, share, contact and about.
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
-
-  // Temporary message for screens that are not built yet.
-  void _showSoon(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('سنجهز هذه الصفحة قريبًا بإذن الله'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
 
   // Cycle the theme: system -> light -> dark -> system.
   void _cycleTheme() {
@@ -41,6 +36,38 @@ class MoreScreen extends StatelessWidget {
       ThemeMode.light => Icons.light_mode_rounded,
       ThemeMode.dark => Icons.dark_mode_rounded,
     };
+  }
+
+  // Opens the share sheet with a short text (and the store link, once set).
+  Future<void> _shareApp() async {
+    final String text =
+    kShareLink.isEmpty ? kShareText : '$kShareText\n$kShareLink';
+    await SharePlus.instance.share(ShareParams(text: text));
+  }
+
+  // Opens the mail app. If there is none, copies the address instead.
+  Future<void> _contactUs(BuildContext context) async {
+    final Uri uri = Uri.parse(
+      'mailto:$kContactEmail'
+          '?subject=${Uri.encodeComponent('تواصل بخصوص تطبيق نور لها')}',
+    );
+
+    bool opened = false;
+    try {
+      opened = await launchUrl(uri);
+    } catch (_) {
+      opened = false;
+    }
+    if (opened || !context.mounted) return;
+
+    await Clipboard.setData(const ClipboardData(text: kContactEmail));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('لم نجد تطبيق بريد، نسخنا العنوان لك: $kContactEmail'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -102,11 +129,39 @@ class MoreScreen extends StatelessWidget {
 
             const SizedBox(height: 12),
 
+            // Keep the screen on while reading the Quran.
+            ValueListenableBuilder<bool>(
+              valueListenable: keepScreenOnNotifier,
+              builder: (context, on, _) {
+                return _MoreTile(
+                  icon: Icons.light_mode_outlined,
+                  title: 'إبقاء الشاشة مضاءة',
+                  subtitle: 'أثناء القراءة في المصحف',
+                  onTap: () => setKeepScreenOn(!on),
+                  trailing: Switch(
+                    value: on,
+                    onChanged: setKeepScreenOn,
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 12),
+
             _MoreTile(
-              icon: Icons.settings_outlined,
-              title: 'الإعدادات',
-              subtitle: 'حجم الخط وغيرها',
-              onTap: () => _showSoon(context),
+              icon: Icons.ios_share_rounded,
+              title: 'مشاركة التطبيق',
+              subtitle: 'شاركيه صدقة جارية',
+              onTap: _shareApp,
+            ),
+
+            const SizedBox(height: 12),
+
+            _MoreTile(
+              icon: Icons.mail_outline_rounded,
+              title: 'تواصل معنا',
+              subtitle: 'اقتراح أو ملاحظة',
+              onTap: () => _contactUs(context),
             ),
 
             const SizedBox(height: 12),
@@ -130,18 +185,20 @@ class MoreScreen extends StatelessWidget {
   }
 }
 
-// One row in the "More" list.
+// One row in the "More" list. [trailing] replaces the arrow (for a switch).
 class _MoreTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final Widget? trailing;
 
   const _MoreTile({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.trailing,
   });
 
   @override
@@ -196,11 +253,12 @@ class _MoreTile extends StatelessWidget {
                 ),
               ),
 
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: colors.accent,
-                size: 16,
-              ),
+              trailing ??
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: colors.accent,
+                    size: 16,
+                  ),
             ],
           ),
         ),

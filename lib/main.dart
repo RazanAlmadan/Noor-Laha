@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'dart:async';
 
+import 'core/app_settings.dart';
 import 'core/app_colors.dart';
 import 'core/app_theme.dart';
 import 'core/saved_items.dart';
@@ -29,6 +30,7 @@ Future<void> main() async {
   await loadThemeMode();
   await loadTasbih();
   await loadWird();
+  await loadAppSettings();
 
   // The dedication page shows once a day.
   final bool showDedication = await shouldShowDedication();
